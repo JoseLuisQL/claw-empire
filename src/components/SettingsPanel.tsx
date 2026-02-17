@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import type { CompanySettings, CliStatusMap, CliProvider } from "../types";
+import * as api from "../api";
+import type { OAuthStatus } from "../api";
 
 interface SettingsPanelProps {
   settings: CompanySettings;
@@ -17,6 +19,13 @@ const CLI_INFO: Record<string, { label: string; icon: string }> = {
   antigravity: { label: "Antigravity", icon: "🟡" },
 };
 
+const OAUTH_INFO: Record<string, { label: string; icon: string }> = {
+  github: { label: "GitHub", icon: "🐙" },
+  copilot: { label: "GitHub Copilot", icon: "⚫" },
+  google: { label: "Google Cloud", icon: "☁️" },
+  antigravity: { label: "Antigravity", icon: "🟡" },
+};
+
 export default function SettingsPanel({
   settings,
   cliStatus,
@@ -25,10 +34,23 @@ export default function SettingsPanel({
 }: SettingsPanelProps) {
   const [form, setForm] = useState<CompanySettings>(settings);
   const [saved, setSaved] = useState(false);
+  const [tab, setTab] = useState<"general" | "cli" | "oauth">("general");
+  const [oauthStatus, setOauthStatus] = useState<OAuthStatus | null>(null);
+  const [oauthLoading, setOauthLoading] = useState(false);
 
   useEffect(() => {
     setForm(settings);
   }, [settings]);
+
+  useEffect(() => {
+    if (tab === "oauth" && !oauthStatus) {
+      setOauthLoading(true);
+      api.getOAuthStatus()
+        .then(setOauthStatus)
+        .catch(console.error)
+        .finally(() => setOauthLoading(false));
+    }
+  }, [tab, oauthStatus]);
 
   function handleSave() {
     onSave(form);
@@ -42,7 +64,31 @@ export default function SettingsPanel({
         ⚙️ 설정
       </h2>
 
-      {/* Company Info */}
+      {/* Tab navigation */}
+      <div className="flex border-b border-slate-700/50">
+        {[
+          { key: "general", label: "일반 설정", icon: "⚙️" },
+          { key: "cli", label: "CLI 도구", icon: "🔧" },
+          { key: "oauth", label: "OAuth 인증", icon: "🔑" },
+        ].map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key as typeof tab)}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
+              tab === t.key
+                ? "text-blue-400 border-b-2 border-blue-400"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <span>{t.icon}</span>
+            <span>{t.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* General Settings Tab */}
+      {tab === "general" && (
+      <>
       <section className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5 space-y-4">
         <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
           회사 정보
@@ -129,7 +175,25 @@ export default function SettingsPanel({
         </div>
       </section>
 
-      {/* CLI Status */}
+      {/* Save */}
+      <div className="flex justify-end gap-3">
+        {saved && (
+          <span className="text-green-400 text-sm self-center">
+            ✅ 저장 완료
+          </span>
+        )}
+        <button
+          onClick={handleSave}
+          className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
+        >
+          저장
+        </button>
+      </div>
+      </>
+      )}
+
+      {/* CLI Status Tab */}
+      {tab === "cli" && (
       <section className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
@@ -192,22 +256,135 @@ export default function SettingsPanel({
             로딩 중...
           </div>
         )}
-      </section>
 
-      {/* Save */}
-      <div className="flex justify-end gap-3">
-        {saved && (
-          <span className="text-green-400 text-sm self-center">
-            ✅ 저장 완료
-          </span>
+        <p className="text-xs text-slate-500">
+          각 에이전트의 CLI 도구는 오피스에서 에이전트 클릭 후 변경할 수 있습니다.
+        </p>
+      </section>
+      )}
+
+      {/* OAuth Tab */}
+      {tab === "oauth" && (
+      <section className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+            OAuth 인증 현황
+          </h3>
+          <button
+            onClick={() => {
+              setOauthStatus(null);
+              setOauthLoading(true);
+              api.getOAuthStatus()
+                .then(setOauthStatus)
+                .catch(console.error)
+                .finally(() => setOauthLoading(false));
+            }}
+            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            🔄 새로고침
+          </button>
+        </div>
+
+        {/* Storage status */}
+        {oauthStatus && (
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${
+            oauthStatus.storageReady
+              ? "bg-green-500/10 text-green-400 border border-green-500/20"
+              : "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+          }`}>
+            <span>{oauthStatus.storageReady ? "🔒" : "⚠️"}</span>
+            <span>
+              {oauthStatus.storageReady
+                ? "OAuth 저장소 활성화됨 (암호화 키 설정됨)"
+                : "OAUTH_ENCRYPTION_SECRET 환경변수가 설정되지 않았습니다"}
+            </span>
+          </div>
         )}
-        <button
-          onClick={handleSave}
-          className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          저장
-        </button>
-      </div>
+
+        {oauthLoading ? (
+          <div className="text-center py-8 text-slate-500 text-sm">
+            로딩 중...
+          </div>
+        ) : oauthStatus ? (
+          Object.keys(oauthStatus.providers).length === 0 ? (
+            <div className="text-center py-8 text-slate-500">
+              <div className="text-3xl mb-2">🔑</div>
+              <div className="text-sm">등록된 OAuth 인증 정보가 없습니다</div>
+              <div className="text-xs mt-1 text-slate-600">
+                CLI 도구를 인증하면 자동으로 등록됩니다
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {Object.entries(oauthStatus.providers).map(([provider, info]) => {
+                const oauthInfo = OAUTH_INFO[provider];
+                const expiresAt = info.expires_at ? new Date(info.expires_at) : null;
+                const isExpired = expiresAt ? expiresAt.getTime() < Date.now() : false;
+                return (
+                  <div
+                    key={provider}
+                    className="bg-slate-700/30 rounded-lg p-4 space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{oauthInfo?.icon ?? "🔑"}</span>
+                        <span className="text-sm font-medium text-white">
+                          {oauthInfo?.label ?? provider}
+                        </span>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        info.connected && !isExpired
+                          ? "bg-green-500/20 text-green-400"
+                          : isExpired
+                          ? "bg-red-500/20 text-red-400"
+                          : "bg-slate-600/50 text-slate-400"
+                      }`}>
+                        {info.connected && !isExpired ? "연결됨" : isExpired ? "만료됨" : "미연결"}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {info.email && (
+                        <div>
+                          <span className="text-slate-500">계정: </span>
+                          <span className="text-slate-300">{info.email}</span>
+                        </div>
+                      )}
+                      {info.source && (
+                        <div>
+                          <span className="text-slate-500">소스: </span>
+                          <span className="text-slate-300">{info.source}</span>
+                        </div>
+                      )}
+                      {info.scope && (
+                        <div className="col-span-2">
+                          <span className="text-slate-500">스코프: </span>
+                          <span className="text-slate-300 font-mono text-[10px]">{info.scope}</span>
+                        </div>
+                      )}
+                      {expiresAt && (
+                        <div>
+                          <span className="text-slate-500">만료: </span>
+                          <span className={isExpired ? "text-red-400" : "text-slate-300"}>
+                            {expiresAt.toLocaleString("ko-KR")}
+                          </span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-slate-500">등록: </span>
+                        <span className="text-slate-300">
+                          {new Date(info.created_at).toLocaleString("ko-KR")}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        ) : null}
+      </section>
+      )}
     </div>
   );
 }

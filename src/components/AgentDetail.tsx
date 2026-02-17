@@ -1,5 +1,7 @@
 import { useState } from "react";
 import type { Agent, Task, Department } from "../types";
+import * as api from "../api";
+import AgentAvatar from "./AgentAvatar";
 
 interface SubAgent {
   id: string;
@@ -10,6 +12,7 @@ interface SubAgent {
 
 interface AgentDetailProps {
   agent: Agent;
+  agents: Agent[];
   department: Department | undefined;
   tasks: Task[];
   subAgents: SubAgent[];
@@ -17,6 +20,7 @@ interface AgentDetailProps {
   onChat: (agent: Agent) => void;
   onAssignTask: (agentId: string) => void;
   onOpenTerminal?: (taskId: string) => void;
+  onAgentUpdated?: () => void;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -51,6 +55,7 @@ const CLI_LABELS: Record<string, string> = {
 
 export default function AgentDetail({
   agent,
+  agents,
   department,
   tasks,
   subAgents,
@@ -58,8 +63,12 @@ export default function AgentDetail({
   onChat,
   onAssignTask,
   onOpenTerminal,
+  onAgentUpdated,
 }: AgentDetailProps) {
   const [tab, setTab] = useState<"info" | "tasks" | "alba">("info");
+  const [editingCli, setEditingCli] = useState(false);
+  const [selectedCli, setSelectedCli] = useState(agent.cli_provider);
+  const [savingCli, setSavingCli] = useState(false);
   const agentTasks = tasks.filter((t) => t.assigned_agent_id === agent.id);
   const agentSubAgents = subAgents.filter(
     (s) => s.parentAgentId === agent.id
@@ -92,20 +101,13 @@ export default function AgentDetail({
           <div className="flex items-center gap-4">
             {/* Avatar */}
             <div className="relative">
-              <div
-                className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl ${
-                  agent.status === "working"
-                    ? "animate-agent-work"
-                    : ""
-                }`}
-                style={{
-                  background: department
-                    ? `${department.color}33`
-                    : "#334155",
-                }}
-              >
-                {agent.avatar_emoji}
-              </div>
+              <AgentAvatar
+                agent={agent}
+                agents={agents}
+                size={64}
+                rounded="2xl"
+                className={agent.status === "working" ? "animate-agent-work" : ""}
+              />
               <div
                 className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-800 ${
                   agent.status === "working"
@@ -130,8 +132,54 @@ export default function AgentDetail({
                 {department?.icon} {department?.name_ko} ·{" "}
                 {ROLE_LABELS[agent.role] ?? agent.role}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">
-                🔧 {CLI_LABELS[agent.cli_provider] ?? agent.cli_provider}
+              <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                {editingCli ? (
+                  <>
+                    <span>🔧</span>
+                    <select
+                      value={selectedCli}
+                      onChange={(e) => setSelectedCli(e.target.value)}
+                      className="bg-slate-700 text-slate-200 text-xs rounded px-1.5 py-0.5 border border-slate-600 focus:outline-none focus:border-blue-500"
+                    >
+                      {Object.entries(CLI_LABELS).map(([key, label]) => (
+                        <option key={key} value={key}>{label}</option>
+                      ))}
+                    </select>
+                    <button
+                      disabled={savingCli}
+                      onClick={async () => {
+                        setSavingCli(true);
+                        try {
+                          await api.updateAgent(agent.id, { cli_provider: selectedCli });
+                          onAgentUpdated?.();
+                          setEditingCli(false);
+                        } catch (e) {
+                          console.error("Failed to update CLI:", e);
+                        } finally {
+                          setSavingCli(false);
+                        }
+                      }}
+                      className="text-[10px] px-1.5 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors disabled:opacity-50"
+                    >
+                      {savingCli ? "..." : "저장"}
+                    </button>
+                    <button
+                      onClick={() => { setEditingCli(false); setSelectedCli(agent.cli_provider); }}
+                      className="text-[10px] px-1.5 py-0.5 bg-slate-600 hover:bg-slate-500 text-slate-300 rounded transition-colors"
+                    >
+                      취소
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setEditingCli(true)}
+                    className="flex items-center gap-1 hover:text-slate-300 transition-colors"
+                    title="클릭하여 CLI 변경"
+                  >
+                    🔧 {CLI_LABELS[agent.cli_provider] ?? agent.cli_provider}
+                    <span className="text-[9px] text-slate-600 ml-0.5">✏️</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>

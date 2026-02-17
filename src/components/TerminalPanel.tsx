@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Agent, Task } from '../types';
 import * as api from '../api';
+import AgentAvatar from './AgentAvatar';
 
 interface TerminalPanelProps {
   taskId: string;
   task: Task | undefined;
   agent: Agent | undefined;
+  agents: Agent[];
   onClose: () => void;
 }
 
@@ -25,7 +27,7 @@ interface TaskLogEntry {
   created_at: number;
 }
 
-export default function TerminalPanel({ taskId, task, agent, onClose }: TerminalPanelProps) {
+export default function TerminalPanel({ taskId, task, agent, agents, onClose }: TerminalPanelProps) {
   const [text, setText] = useState('');
   const [taskLogs, setTaskLogs] = useState<TaskLogEntry[]>([]);
   const [logPath, setLogPath] = useState('');
@@ -94,7 +96,7 @@ export default function TerminalPanel({ taskId, task, agent, onClose }: Terminal
       <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-700/50 bg-[#161b22]">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {agent && (
-            <span className="text-xl flex-shrink-0">{agent.avatar_emoji}</span>
+            <AgentAvatar agent={agent} agents={agents} size={28} />
           )}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -198,7 +200,7 @@ export default function TerminalPanel({ taskId, task, agent, onClose }: Terminal
       {/* Bottom status bar */}
       <div className="flex items-center justify-between px-4 py-1.5 border-t border-slate-700/50 bg-[#161b22] text-[10px] text-slate-500">
         <span>
-          {agent ? `${agent.avatar_emoji} ${agent.name_ko || agent.name}` : 'No agent'}
+          {agent ? `${agent.name_ko || agent.name}` : 'No agent'}
           {agent?.cli_provider ? ` (${agent.cli_provider})` : ''}
         </span>
         <span>

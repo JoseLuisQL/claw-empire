@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { Agent, Message } from '../types';
+import MessageContent from './MessageContent';
+import AgentAvatar, { buildSpriteMap } from './AgentAvatar';
 
 interface ChatPanelProps {
   selectedAgent: Agent | null;
@@ -7,43 +9,8 @@ interface ChatPanelProps {
   agents: Agent[];
   onSendMessage: (content: string, receiverType: 'agent' | 'department' | 'all', receiverId?: string, messageType?: string) => void;
   onSendAnnouncement: (content: string) => void;
+  onClearMessages?: (agentId?: string) => void;
   onClose: () => void;
-}
-
-/** Map agent IDs to sprite numbers (same logic as OfficeView) */
-function buildSpriteMap(agents: Agent[]): Map<string, number> {
-  const map = new Map<string, number>();
-  const sorted = [...agents].sort((a, b) => a.id.localeCompare(b.id));
-  sorted.forEach((a, i) => map.set(a.id, (i % 12) + 1));
-  return map;
-}
-
-/** Sprite-based avatar component for agents */
-function AgentAvatar({ agent, spriteMap, size = 28 }: { agent: Agent | undefined; spriteMap: Map<string, number>; size?: number }) {
-  const spriteNum = agent ? spriteMap.get(agent.id) : undefined;
-  if (spriteNum) {
-    return (
-      <div
-        className="rounded-full overflow-hidden bg-gray-700 flex-shrink-0"
-        style={{ width: size, height: size }}
-      >
-        <img
-          src={`/sprites/${spriteNum}-D-1.png`}
-          alt={agent?.name ?? ''}
-          className="w-full h-full object-cover"
-          style={{ imageRendering: 'pixelated' }}
-        />
-      </div>
-    );
-  }
-  return (
-    <div
-      className="rounded-full bg-gray-700 flex items-center justify-center flex-shrink-0"
-      style={{ width: size, height: size, fontSize: size * 0.6 }}
-    >
-      {agent?.avatar_emoji ?? '🤖'}
-    </div>
-  );
 }
 
 type ChatMode = 'chat' | 'task' | 'announcement' | 'report';
@@ -103,10 +70,11 @@ export function ChatPanel({
   agents,
   onSendMessage,
   onSendAnnouncement,
+  onClearMessages,
   onClose,
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
-  const [mode, setMode] = useState<ChatMode>('chat');
+  const [mode, setMode] = useState<ChatMode>(selectedAgent ? 'task' : 'announcement');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const spriteMap = useMemo(() => buildSpriteMap(agents), [agents]);
@@ -125,12 +93,12 @@ export function ChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Switch to announcement mode when no agent selected
+  // Switch mode when agent selection changes
   useEffect(() => {
-    if (!selectedAgent && mode === 'chat') {
+    if (!selectedAgent) {
       setMode('announcement');
-    } else if (selectedAgent && mode === 'announcement') {
-      setMode('chat');
+    } else if (mode === 'announcement') {
+      setMode('task');
     }
   }, [selectedAgent]);
 
@@ -232,14 +200,35 @@ export function ChatPanel({
           </>
         )}
 
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
-          aria-label="닫기"
-        >
-          ✕
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Clear messages */}
+          {onClearMessages && visibleMessages.length > 0 && (
+            <button
+              onClick={() => {
+                if (confirm(selectedAgent
+                  ? `${selectedAgent.name_ko || selectedAgent.name}와의 대화를 삭제하시겠습니까?`
+                  : '전사 공지 내역을 삭제하시겠습니까?'
+                )) {
+                  onClearMessages(selectedAgent?.id);
+                }
+              }}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-gray-500 hover:text-red-400 hover:bg-gray-700 transition-colors"
+              title="대화 내역 삭제"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14" />
+              </svg>
+            </button>
+          )}
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            aria-label="닫기"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       {/* Announcement mode banner */}
@@ -291,7 +280,7 @@ export function ChatPanel({
                     <div className="flex flex-col gap-1 max-w-[75%]">
                       <span className="text-xs text-gray-500 px-1">{senderName}</span>
                       <div className="bg-gray-700/70 text-gray-100 text-sm rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-md border border-yellow-500/20">
-                        {msg.content}
+                        <MessageContent content={msg.content} />
                       </div>
                       <span className="text-xs text-gray-600 px-1">{formatTime(msg.created_at)}</span>
                     </div>
@@ -304,7 +293,7 @@ export function ChatPanel({
                 return (
                   <div key={msg.id} className="flex flex-col items-center gap-1">
                     <div className="max-w-[85%] bg-yellow-500/15 border border-yellow-500/30 text-yellow-300 text-sm rounded-2xl px-4 py-2.5 text-center shadow-sm">
-                      {msg.content}
+                      <MessageContent content={msg.content} />
                     </div>
                     <span className="text-xs text-gray-600">{formatTime(msg.created_at)}</span>
                   </div>
@@ -317,7 +306,7 @@ export function ChatPanel({
                   <div key={msg.id} className="flex flex-col items-end gap-1">
                     <span className="text-xs text-gray-500 px-1">CEO</span>
                     <div className="max-w-[80%] bg-blue-600 text-white text-sm rounded-2xl rounded-br-sm px-4 py-2.5 shadow-md">
-                      {msg.content}
+                      <MessageContent content={msg.content} />
                     </div>
                     <span className="text-xs text-gray-600 px-1">
                       {formatTime(msg.created_at)}
@@ -333,7 +322,7 @@ export function ChatPanel({
                   <div className="flex flex-col gap-1 max-w-[75%]">
                     <span className="text-xs text-gray-500 px-1">{senderName}</span>
                     <div className="bg-gray-700 text-gray-100 text-sm rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-md">
-                      {msg.content}
+                      <MessageContent content={msg.content} />
                     </div>
                     <span className="text-xs text-gray-600 px-1">
                       {formatTime(msg.created_at)}

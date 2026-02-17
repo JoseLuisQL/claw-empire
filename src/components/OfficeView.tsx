@@ -24,11 +24,20 @@ interface SubAgent {
   status: "working" | "done";
 }
 
+interface CrossDeptDelivery {
+  id: string;
+  fromAgentId: string;
+  toAgentId: string;
+}
+
 interface OfficeViewProps {
   departments: Department[];
   agents: Agent[];
   tasks: Task[];
   subAgents: SubAgent[];
+  unreadAgentIds?: Set<string>;
+  crossDeptDeliveries?: CrossDeptDelivery[];
+  onCrossDeptDeliveryProcessed?: (id: string) => void;
   onSelectAgent: (agent: Agent) => void;
   onSelectDepartment: (dept: Department) => void;
 }
@@ -40,6 +49,9 @@ interface Delivery {
   toX: number;
   toY: number;
   progress: number;
+  arcHeight?: number;
+  speed?: number;
+  type?: "throw" | "walk";
 }
 
 interface RoomRect {
@@ -198,6 +210,9 @@ function drawBookshelf(parent: Container, x: number, y: number) {
 
 export default function OfficeView({
   departments, agents, tasks, subAgents,
+  unreadAgentIds,
+  crossDeptDeliveries,
+  onCrossDeptDeliveryProcessed,
   onSelectAgent, onSelectDepartment,
 }: OfficeViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -222,12 +237,14 @@ export default function OfficeView({
   const deliveryLayerRef = useRef<Container | null>(null);
   const prevAssignRef = useRef<Set<string>>(new Set());
   const agentPosRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const processedCrossDeptRef = useRef<Set<string>>(new Set());
+  const spriteMapRef = useRef<Map<string, number>>(new Map());
   const totalHRef = useRef(600);
   const officeWRef = useRef(MIN_OFFICE_W);
 
   // Latest data via refs (avoids stale closures)
-  const dataRef = useRef({ departments, agents, tasks, subAgents });
-  dataRef.current = { departments, agents, tasks, subAgents };
+  const dataRef = useRef({ departments, agents, tasks, subAgents, unreadAgentIds });
+  dataRef.current = { departments, agents, tasks, subAgents, unreadAgentIds };
   const cbRef = useRef({ onSelectAgent, onSelectDepartment });
   cbRef.current = { onSelectAgent, onSelectDepartment };
 
@@ -242,12 +259,13 @@ export default function OfficeView({
     roomRectsRef.current = [];
     agentPosRef.current.clear();
 
-    const { departments, agents, tasks, subAgents } = dataRef.current;
+    const { departments, agents, tasks, subAgents, unreadAgentIds: unread } = dataRef.current;
 
     // Assign unique sprite numbers to each agent (1-12, no duplicates)
     const spriteMap = new Map<string, number>();
     const allAgents = [...agents].sort((a, b) => a.id.localeCompare(b.id)); // stable order
     allAgents.forEach((a, i) => spriteMap.set(a.id, (i % 12) + 1));
+    spriteMapRef.current = spriteMap;
 
     // Measure container width for responsive layout
     const OFFICE_W = officeWRef.current;
@@ -455,6 +473,22 @@ export default function OfficeView({
         room.addChild(ntBg);
         nt.position.set(ax, nameY + 2);
         room.addChild(nt);
+
+        // Unread message indicator (red !)
+        if (unread?.has(agent.id)) {
+          const bangBg = new Graphics();
+          const bangX = ax + ntW / 2 + 2;
+          bangBg.circle(bangX, nameY + 6, 6).fill(0xff3333);
+          bangBg.circle(bangX, nameY + 6, 6).stroke({ width: 1, color: 0xff0000, alpha: 0.6 });
+          room.addChild(bangBg);
+          const bangTxt = new Text({
+            text: "!",
+            style: new TextStyle({ fontSize: 8, fill: 0xffffff, fontWeight: "bold", fontFamily: "monospace" }),
+          });
+          bangTxt.anchor.set(0.5, 0.5);
+          bangTxt.position.set(bangX, nameY + 6);
+          room.addChild(bangTxt);
+        }
 
         // Role badge (below name, above character)
         const roleLabels: Record<string, string> = {
@@ -789,16 +823,33 @@ export default function OfficeView({
         const deliveries = deliveriesRef.current;
         for (let i = deliveries.length - 1; i >= 0; i--) {
           const d = deliveries[i];
-          d.progress += DELIVERY_SPEED;
+          d.progress += d.speed ?? DELIVERY_SPEED;
           if (d.progress >= 1) {
             d.sprite.parent?.removeChild(d.sprite);
             d.sprite.destroy({ children: true });
             deliveries.splice(i, 1);
-          } else {
+          } else if (d.type === "walk") {
+            // Walking character animation — smooth linear walk with bounce
             const t = d.progress;
             const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
             d.sprite.position.x = d.fromX + (d.toX - d.fromX) * ease;
-            d.sprite.position.y = d.fromY + (d.toY - d.fromY) * ease + Math.sin(t * Math.PI) * -30;
+            d.sprite.position.y = d.fromY + (d.toY - d.fromY) * ease;
+            // Walking bounce (small hop)
+            const walkBounce = Math.abs(Math.sin(t * Math.PI * 12)) * 3;
+            d.sprite.position.y -= walkBounce;
+            // Fade in/out at edges
+            if (t < 0.05) d.sprite.alpha = t / 0.05;
+            else if (t > 0.9) d.sprite.alpha = (1 - t) / 0.1;
+            else d.sprite.alpha = 1;
+            // Flip direction: face right when moving right, left when moving left
+            d.sprite.scale.x = d.toX > d.fromX ? 1 : -1;
+          } else {
+            // Thrown document animation (CEO → agent)
+            const t = d.progress;
+            const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+            const arc = d.arcHeight ?? -30;
+            d.sprite.position.x = d.fromX + (d.toX - d.fromX) * ease;
+            d.sprite.position.y = d.fromY + (d.toY - d.fromY) * ease + Math.sin(t * Math.PI) * arc;
             d.sprite.alpha = t > 0.85 ? (1 - t) / 0.15 : 1;
             d.sprite.scale.set(0.8 + Math.sin(t * Math.PI) * 0.3);
           }
@@ -865,7 +916,89 @@ export default function OfficeView({
     if (initDoneRef.current && appRef.current) {
       buildScene();
     }
-  }, [departments, agents, tasks, subAgents, buildScene]);
+  }, [departments, agents, tasks, subAgents, unreadAgentIds, buildScene]);
+
+  /* ── CROSS-DEPT DELIVERY ANIMATIONS (walking character) ── */
+  useEffect(() => {
+    if (!crossDeptDeliveries?.length) return;
+    const dlLayer = deliveryLayerRef.current;
+    const textures = texturesRef.current;
+    if (!dlLayer) return;
+
+    for (const cd of crossDeptDeliveries) {
+      if (processedCrossDeptRef.current.has(cd.id)) continue;
+      processedCrossDeptRef.current.add(cd.id);
+
+      const fromPos = agentPosRef.current.get(cd.fromAgentId);
+      const toPos = agentPosRef.current.get(cd.toAgentId);
+      if (!fromPos || !toPos) {
+        onCrossDeptDeliveryProcessed?.(cd.id);
+        continue;
+      }
+
+      const dc = new Container();
+
+      // ── Walking character sprite ──
+      const spriteNum = spriteMapRef.current.get(cd.fromAgentId) ?? ((hashStr(cd.fromAgentId) % 12) + 1);
+      const frames: Texture[] = [];
+      for (let f = 1; f <= 3; f++) {
+        const key = `${spriteNum}-D-${f}`;
+        if (textures[key]) frames.push(textures[key]);
+      }
+
+      if (frames.length > 0) {
+        const animSprite = new AnimatedSprite(frames);
+        animSprite.anchor.set(0.5, 1);
+        const scale = 44 / animSprite.texture.height;
+        animSprite.scale.set(scale);
+        animSprite.animationSpeed = 0.12;
+        animSprite.play();
+        animSprite.position.set(0, 0);
+        dc.addChild(animSprite);
+      } else {
+        const fb = new Text({ text: "🧑‍💼", style: new TextStyle({ fontSize: 20 }) });
+        fb.anchor.set(0.5, 1);
+        dc.addChild(fb);
+      }
+
+      // ── Document held above head ──
+      const docHolder = new Container();
+      const docEmoji = new Text({ text: "📋", style: new TextStyle({ fontSize: 13 }) });
+      docEmoji.anchor.set(0.5, 0.5);
+      docHolder.addChild(docEmoji);
+      docHolder.position.set(0, -50);
+      dc.addChild(docHolder);
+
+      // ── "협업" badge below feet ──
+      const badge = new Graphics();
+      badge.roundRect(-16, 3, 32, 13, 4).fill({ color: 0xf59e0b, alpha: 0.9 });
+      badge.roundRect(-16, 3, 32, 13, 4).stroke({ width: 1, color: 0xd97706, alpha: 0.5 });
+      dc.addChild(badge);
+      const badgeText = new Text({
+        text: "🤝 협업",
+        style: new TextStyle({ fontSize: 7, fill: 0x000000, fontWeight: "bold", fontFamily: "system-ui, sans-serif" }),
+      });
+      badgeText.anchor.set(0.5, 0.5);
+      badgeText.position.set(0, 9.5);
+      dc.addChild(badgeText);
+
+      dc.position.set(fromPos.x, fromPos.y);
+      dlLayer.addChild(dc);
+
+      deliveriesRef.current.push({
+        sprite: dc,
+        fromX: fromPos.x,
+        fromY: fromPos.y,
+        toX: toPos.x,
+        toY: toPos.y,
+        progress: 0,
+        speed: 0.005,
+        type: "walk",
+      });
+
+      onCrossDeptDeliveryProcessed?.(cd.id);
+    }
+  }, [crossDeptDeliveries, onCrossDeptDeliveryProcessed]);
 
   return (
     <div className="w-full overflow-auto" style={{ minHeight: "100%" }}>

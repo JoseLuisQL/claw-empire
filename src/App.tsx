@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Sidebar from "./components/Sidebar";
 import OfficeView from "./components/OfficeView";
 import { ChatPanel } from "./components/ChatPanel";
@@ -27,6 +27,12 @@ interface SubAgent {
   status: "working" | "done";
 }
 
+export interface CrossDeptDelivery {
+  id: string;
+  fromAgentId: string;
+  toAgentId: string;
+}
+
 type View = "office" | "dashboard" | "tasks" | "settings";
 
 export default function App() {
@@ -47,6 +53,12 @@ export default function App() {
   const [showChat, setShowChat] = useState(false);
   const [terminalTaskId, setTerminalTaskId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [unreadAgentIds, setUnreadAgentIds] = useState<Set<string>>(new Set());
+  const [crossDeptDeliveries, setCrossDeptDeliveries] = useState<CrossDeptDelivery[]>([]);
+
+  // Ref to track currently open chat (avoids stale closures in WebSocket handlers)
+  const activeChatRef = useRef<{ showChat: boolean; agentId: string | null }>({ showChat: false, agentId: null });
+  activeChatRef.current = { showChat, agentId: chatAgent?.id ?? null };
 
   // WebSocket
   const { connected, on } = useWebSocket();
@@ -111,12 +123,41 @@ export default function App() {
         setMessages((prev) =>
           prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]
         );
+        // Track unread: if an agent sent a message, mark as unread
+        // BUT skip if the chat panel is currently open for this agent
+        if (msg.sender_type === 'agent' && msg.sender_id) {
+          const { showChat: chatOpen, agentId: activeId } = activeChatRef.current;
+          if (chatOpen && activeId === msg.sender_id) return; // already reading
+          setUnreadAgentIds((prev) => {
+            if (prev.has(msg.sender_id!)) return prev;
+            const next = new Set(prev);
+            next.add(msg.sender_id!);
+            return next;
+          });
+        }
       }),
       on("announcement", (payload: unknown) => {
         const msg = payload as Message;
         setMessages((prev) =>
           prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]
         );
+        if (msg.sender_type === 'agent' && msg.sender_id) {
+          const { showChat: chatOpen, agentId: activeId } = activeChatRef.current;
+          if (chatOpen && activeId === msg.sender_id) return; // already reading
+          setUnreadAgentIds((prev) => {
+            if (prev.has(msg.sender_id!)) return prev;
+            const next = new Set(prev);
+            next.add(msg.sender_id!);
+            return next;
+          });
+        }
+      }),
+      on("cross_dept_delivery", (payload: unknown) => {
+        const p = payload as { from_agent_id: string; to_agent_id: string };
+        setCrossDeptDeliveries((prev) => [
+          ...prev,
+          { id: `cd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, fromAgentId: p.from_agent_id, toAgentId: p.to_agent_id },
+        ]);
       }),
       on("cli_output", (payload: unknown) => {
         const p = payload as { task_id: string; stream: string; data: string };
@@ -310,6 +351,13 @@ export default function App() {
   function handleOpenChat(agent: Agent) {
     setChatAgent(agent);
     setShowChat(true);
+    // Clear unread for this agent
+    setUnreadAgentIds((prev) => {
+      if (!prev.has(agent.id)) return prev;
+      const next = new Set(prev);
+      next.delete(agent.id);
+      return next;
+    });
     // Fetch messages for this agent
     api
       .getMessages({ receiver_type: "agent", receiver_id: agent.id, limit: 50 })
@@ -390,6 +438,11 @@ export default function App() {
               agents={agents}
               tasks={tasks}
               subAgents={subAgents}
+              unreadAgentIds={unreadAgentIds}
+              crossDeptDeliveries={crossDeptDeliveries}
+              onCrossDeptDeliveryProcessed={(id) =>
+                setCrossDeptDeliveries((prev) => prev.filter((d) => d.id !== id))
+              }
               onSelectAgent={(a) => setSelectedAgent(a)}
               onSelectDepartment={(dept) => {
                 const leader = agents.find(
@@ -449,6 +502,14 @@ export default function App() {
           agents={agents}
           onSendMessage={handleSendMessage}
           onSendAnnouncement={handleSendAnnouncement}
+          onClearMessages={async (agentId) => {
+            try {
+              await api.clearMessages(agentId);
+              setMessages([]);
+            } catch (e) {
+              console.error("Clear messages failed:", e);
+            }
+          }}
           onClose={() => setShowChat(false)}
         />
       )}
@@ -457,6 +518,7 @@ export default function App() {
       {selectedAgent && (
         <AgentDetail
           agent={selectedAgent}
+          agents={agents}
           department={departments.find(
             (d) => d.id === selectedAgent.department_id
           )}
@@ -475,6 +537,16 @@ export default function App() {
             setSelectedAgent(null);
             setTerminalTaskId(id);
           }}
+          onAgentUpdated={() => {
+            api.getAgents().then((ags) => {
+              setAgents(ags);
+              // Refresh selected agent with updated data
+              if (selectedAgent) {
+                const updated = ags.find(a => a.id === selectedAgent.id);
+                if (updated) setSelectedAgent(updated);
+              }
+            }).catch(console.error);
+          }}
         />
       )}
 
@@ -488,6 +560,7 @@ export default function App() {
               a.current_task_id === terminalTaskId ||
               tasks.find((t) => t.id === terminalTaskId)?.assigned_agent_id === a.id
           )}
+          agents={agents}
           onClose={() => setTerminalTaskId(null)}
         />
       )}
