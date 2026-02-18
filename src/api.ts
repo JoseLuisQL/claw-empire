@@ -8,9 +8,28 @@ import type {
 } from './types';
 
 const base = '';
+const SESSION_BOOTSTRAP_PATH = '/api/auth/session';
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(`${base}${url}`, init);
+async function bootstrapSession(): Promise<void> {
+  try {
+    await fetch(`${base}${SESSION_BOOTSTRAP_PATH}`, {
+      method: 'GET',
+      credentials: 'same-origin',
+    });
+  } catch {
+    // ignore bootstrap failures; main request will surface any errors
+  }
+}
+
+async function request<T>(url: string, init?: RequestInit, canRetryAuth = true): Promise<T> {
+  const r = await fetch(`${base}${url}`, {
+    credentials: 'same-origin',
+    ...init,
+  });
+  if (r.status === 401 && canRetryAuth && url !== SESSION_BOOTSTRAP_PATH) {
+    await bootstrapSession();
+    return request<T>(url, init, false);
+  }
   if (!r.ok) {
     const body = await r.json().catch(() => null);
     throw new Error(body?.error ?? body?.message ?? `Request failed: ${r.status}`);
@@ -429,19 +448,16 @@ export type GatewayTarget = {
 };
 
 export async function getGatewayTargets(): Promise<GatewayTarget[]> {
-  const r = await fetch(`${base}/api/gateway/targets`);
-  if (!r.ok) return [];
-  const data = await r.json();
-  return data?.targets ?? [];
+  try {
+    const data = await request<{ targets?: GatewayTarget[] }>('/api/gateway/targets');
+    return data?.targets ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function sendGatewayMessage(sessionKey: string, text: string): Promise<{ ok: boolean; error?: string }> {
-  const r = await fetch(`${base}/api/gateway/send`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ sessionKey, text }),
-  });
-  return r.json();
+  return post('/api/gateway/send', { sessionKey, text }) as Promise<{ ok: boolean; error?: string }>;
 }
 
 // SubTasks
