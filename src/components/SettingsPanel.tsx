@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { CompanySettings, CliStatusMap, CliProvider } from "../types";
 import * as api from "../api";
-import type { OAuthStatus, OAuthConnectProvider } from "../api";
+import type { OAuthStatus, OAuthConnectProvider, DeviceCodeStart } from "../api";
 import type { OAuthCallbackResult } from "../App";
 
 interface SettingsPanelProps {
@@ -22,12 +22,37 @@ const CLI_INFO: Record<string, { label: string; icon: string }> = {
   antigravity: { label: "Antigravity", icon: "🟡" },
 };
 
-const OAUTH_INFO: Record<string, { label: string; icon: string }> = {
-  github: { label: "GitHub", icon: "🐙" },
-  copilot: { label: "GitHub Copilot", icon: "⚫" },
-  google: { label: "Google Cloud", icon: "☁️" },
-  antigravity: { label: "Antigravity", icon: "🟡" },
+const OAUTH_INFO: Record<string, { label: string }> = {
+  "github-copilot": { label: "GitHub Copilot" },
+  antigravity: { label: "Antigravity" },
 };
+
+// SVG Logo components for OAuth providers
+function GitHubCopilotLogo({ className }: { className?: string }) {
+  return (
+    <svg className={className || "w-5 h-5"} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+    </svg>
+  );
+}
+
+function AntigravityLogo({ className }: { className?: string }) {
+  return (
+    <svg className={className || "w-5 h-5"} viewBox="0 0 24 24" fill="#1a73e8">
+      <path d="m19.94,20.59c1.09.82,2.73.27,1.23-1.23-4.5-4.36-3.55-16.36-9.14-16.36S7.39,15,2.89,19.36c-1.64,1.64.14,2.05,1.23,1.23,4.23-2.86,3.95-7.91,7.91-7.91s3.68,5.05,7.91,7.91Z"/>
+    </svg>
+  );
+}
+
+const CONNECTABLE_PROVIDERS: Array<{
+  id: OAuthConnectProvider;
+  label: string;
+  Logo: ({ className }: { className?: string }) => JSX.Element;
+  description: string;
+}> = [
+  { id: "github-copilot", label: "GitHub Copilot", Logo: GitHubCopilotLogo, description: "GitHub OAuth (Copilot)" },
+  { id: "antigravity", label: "Antigravity", Logo: AntigravityLogo, description: "Google OAuth (Antigravity)" },
+];
 
 export default function SettingsPanel({
   settings,
@@ -46,6 +71,12 @@ export default function SettingsPanel({
   const [oauthLoading, setOauthLoading] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
+  // GitHub Device Code flow state
+  const [deviceCode, setDeviceCode] = useState<DeviceCodeStart | null>(null);
+  const [deviceStatus, setDeviceStatus] = useState<string | null>(null); // "polling" | "complete" | "error" | "expired"
+  const [deviceError, setDeviceError] = useState<string | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     setForm(settings);
   }, [settings]);
@@ -54,7 +85,6 @@ export default function SettingsPanel({
   useEffect(() => {
     if (oauthResult) {
       setTab("oauth");
-      // Force refresh oauth status
       setOauthStatus(null);
     }
   }, [oauthResult]);
@@ -77,24 +107,92 @@ export default function SettingsPanel({
     }
   }, [oauthResult, onOauthResultClear]);
 
+  // Cleanup poll timer on unmount
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, []);
+
   function handleSave() {
     onSave(form);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
 
+  // Antigravity: web redirect OAuth (Google OAuth works on any localhost port)
   function handleConnect(provider: OAuthConnectProvider) {
     const redirectTo = window.location.origin + window.location.pathname;
     window.location.assign(api.getOAuthStartUrl(provider, redirectTo));
   }
 
+  // GitHub Copilot: Device Code flow
+  const startDeviceCodeFlow = useCallback(async () => {
+    setDeviceError(null);
+    setDeviceStatus(null);
+    try {
+      const dc = await api.startGitHubDeviceFlow();
+      setDeviceCode(dc);
+      setDeviceStatus("polling");
+      // Open verification URL
+      window.open(dc.verificationUri, "_blank");
+      // Start polling with expiration timeout
+      const interval = Math.max((dc.interval || 5) * 1000, 5000);
+      const expiresAt = Date.now() + (dc.expiresIn || 900) * 1000;
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      pollTimerRef.current = setInterval(async () => {
+        if (Date.now() > expiresAt) {
+          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+          setDeviceStatus("expired");
+          setDeviceCode(null);
+          setDeviceError("코드가 만료되었습니다. 다시 시도하세요.");
+          return;
+        }
+        try {
+          const result = await api.pollGitHubDevice(dc.stateId);
+          if (result.status === "complete") {
+            if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+            pollTimerRef.current = null;
+            setDeviceStatus("complete");
+            setDeviceCode(null);
+            // Refresh OAuth status
+            const status = await api.getOAuthStatus();
+            setOauthStatus(status);
+          } else if (result.status === "expired" || result.status === "denied") {
+            if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+            pollTimerRef.current = null;
+            setDeviceStatus(result.status);
+            setDeviceError(result.status === "expired" ? "코드가 만료되었습니다" : "인증이 거부되었습니다");
+          } else if (result.status === "error") {
+            if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+            pollTimerRef.current = null;
+            setDeviceStatus("error");
+            setDeviceError(result.error || "알 수 없는 오류");
+          }
+          // "pending" and "slow_down" → keep polling
+        } catch {
+          // Network error — keep polling
+        }
+      }, interval);
+    } catch (err) {
+      setDeviceError(err instanceof Error ? err.message : String(err));
+      setDeviceStatus("error");
+    }
+  }, []);
+
   async function handleDisconnect(provider: OAuthConnectProvider) {
     setDisconnecting(provider);
     try {
       await api.disconnectOAuth(provider);
-      // Refresh status
       const status = await api.getOAuthStatus();
       setOauthStatus(status);
+      // Reset device code state if disconnecting github-copilot
+      if (provider === "github-copilot") {
+        setDeviceCode(null);
+        setDeviceStatus(null);
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      }
     } catch (err) {
       console.error("Disconnect failed:", err);
     } finally {
@@ -371,132 +469,179 @@ export default function SettingsPanel({
             로딩 중...
           </div>
         ) : oauthStatus ? (
-          Object.keys(oauthStatus.providers).length === 0 ? (
-            <div className="text-center py-8 text-slate-500">
-              <div className="text-3xl mb-2">🔑</div>
-              <div className="text-sm">등록된 OAuth 인증 정보가 없습니다</div>
-              <div className="text-xs mt-1 text-slate-600">
-                CLI 도구를 인증하거나 아래 "연결하기" 버튼을 사용하세요
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {Object.entries(oauthStatus.providers).map(([provider, info]) => {
-                const oauthInfo = OAUTH_INFO[provider];
-                const expiresAt = info.expires_at ? new Date(info.expires_at) : null;
-                const isExpired = expiresAt ? expiresAt.getTime() < Date.now() : false;
-                const isWebOAuth = info.source === "web-oauth";
-                const isFileDetected = info.source === "file-detected";
-                const isConnectable = info.webConnectable && (provider === "github" || provider === "google");
-                return (
-                  <div
-                    key={provider}
-                    className="bg-slate-700/30 rounded-lg p-4 space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{oauthInfo?.icon ?? "🔑"}</span>
-                        <span className="text-sm font-medium text-white">
-                          {oauthInfo?.label ?? provider}
-                        </span>
-                        {isFileDetected && info.connected && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-600/50 text-slate-400">
-                            CLI에서 감지됨
-                          </span>
-                        )}
-                        {isWebOAuth && info.connected && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
-                            웹 OAuth
-                          </span>
+          <>
+            {/* Connected services section */}
+            {(() => {
+              const connected = Object.entries(oauthStatus.providers).filter(([, info]) => info.connected);
+              if (connected.length === 0) return null;
+              const logoMap: Record<string, ({ className }: { className?: string }) => JSX.Element> = {
+                "github-copilot": GitHubCopilotLogo, antigravity: AntigravityLogo,
+              };
+              return (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    연결된 서비스
+                  </div>
+                  {connected.map(([provider, info]) => {
+                    const oauthInfo = OAUTH_INFO[provider];
+                    const LogoComp = logoMap[provider];
+                    const expiresAt = info.expires_at ? new Date(info.expires_at) : null;
+                    const isExpired = expiresAt ? expiresAt.getTime() < Date.now() : false;
+                    const isWebOAuth = info.source === "web-oauth";
+                    const isFileDetected = info.source === "file-detected";
+                    return (
+                      <div key={provider} className="bg-slate-700/30 rounded-lg p-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            {LogoComp ? <LogoComp className="w-5 h-5" /> : <span className="text-lg">🔑</span>}
+                            <span className="text-sm font-medium text-white">
+                              {oauthInfo?.label ?? provider}
+                            </span>
+                            {info.email && (
+                              <span className="text-xs text-slate-400">{info.email}</span>
+                            )}
+                            {isFileDetected && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-600/50 text-slate-400">
+                                CLI 감지
+                              </span>
+                            )}
+                            {isWebOAuth && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                                웹 OAuth
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              !isExpired
+                                ? "bg-green-500/20 text-green-400"
+                                : "bg-red-500/20 text-red-400"
+                            }`}>
+                              {!isExpired ? "연결됨" : "만료됨"}
+                            </span>
+                            {isWebOAuth && (
+                              <button
+                                onClick={() => handleDisconnect(provider as OAuthConnectProvider)}
+                                disabled={disconnecting === provider}
+                                className="text-xs px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 transition-colors disabled:opacity-50"
+                              >
+                                {disconnecting === provider ? "해제 중..." : "연결 해제"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {(info.scope || expiresAt || (info.created_at > 0)) && (
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            {info.scope && (
+                              <div className="col-span-2">
+                                <span className="text-slate-500">스코프: </span>
+                                <span className="text-slate-300 font-mono text-[10px]">{info.scope}</span>
+                              </div>
+                            )}
+                            {expiresAt && (
+                              <div>
+                                <span className="text-slate-500">만료: </span>
+                                <span className={isExpired ? "text-red-400" : "text-slate-300"}>
+                                  {expiresAt.toLocaleString("ko-KR")}
+                                </span>
+                              </div>
+                            )}
+                            {info.created_at > 0 && (
+                              <div>
+                                <span className="text-slate-500">등록: </span>
+                                <span className="text-slate-300">
+                                  {new Date(info.created_at).toLocaleString("ko-KR")}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          info.connected && !isExpired
-                            ? "bg-green-500/20 text-green-400"
-                            : isExpired
-                            ? "bg-red-500/20 text-red-400"
-                            : "bg-slate-600/50 text-slate-400"
-                        }`}>
-                          {info.connected && !isExpired ? "연결됨" : isExpired ? "만료됨" : "미연결"}
-                        </span>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
-                        {/* Connect / Disconnect buttons */}
-                        {isConnectable && oauthStatus.storageReady && !isWebOAuth && (
+            {/* New OAuth Connect section — provider cards */}
+            <div className="space-y-3">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                새 OAuth 연결
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {CONNECTABLE_PROVIDERS.map(({ id, label, Logo, description }) => {
+                  const providerInfo = oauthStatus.providers[id];
+                  const isConnected = providerInfo?.connected;
+                  const storageOk = oauthStatus.storageReady;
+                  const isGitHub = id === "github-copilot";
+
+                  return (
+                    <div
+                      key={id}
+                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition-all ${
+                        isConnected
+                          ? "bg-green-500/5 border-green-500/30"
+                          : storageOk
+                          ? "bg-slate-700/30 border-slate-600/50 hover:border-blue-400/50 hover:bg-slate-700/50"
+                          : "bg-slate-800/30 border-slate-700/30 opacity-50"
+                      }`}
+                    >
+                      <Logo className="w-8 h-8" />
+                      <span className="text-sm font-medium text-white">{label}</span>
+                      <span className="text-[10px] text-slate-400 text-center leading-tight">{description}</span>
+                      {isConnected ? (
+                        <span className="text-[11px] px-2.5 py-1 rounded-lg bg-green-500/20 text-green-400 font-medium">
+                          연결됨
+                        </span>
+                      ) : !storageOk ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-500">
+                          암호화 키 필요
+                        </span>
+                      ) : isGitHub ? (
+                        /* GitHub Copilot: Device Code flow */
+                        deviceCode && deviceStatus === "polling" ? (
+                          <div className="flex flex-col items-center gap-1.5">
+                            <div className="text-xs text-slate-300 font-mono bg-slate-700/60 px-3 py-1.5 rounded-lg tracking-widest select-all">
+                              {deviceCode.userCode}
+                            </div>
+                            <span className="text-[10px] text-blue-400 animate-pulse">
+                              코드 입력 대기 중...
+                            </span>
+                          </div>
+                        ) : (
                           <button
-                            onClick={() => handleConnect(provider as OAuthConnectProvider)}
-                            className="text-xs px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-                          >
-                            {isFileDetected ? "웹 OAuth로 연결" : "연결하기"}
-                          </button>
-                        )}
-                        {isConnectable && !oauthStatus.storageReady && !isWebOAuth && (
-                          <button
-                            disabled
-                            className="text-xs px-2.5 py-1 rounded-lg bg-slate-600/50 text-slate-500 cursor-not-allowed"
-                            title="OAUTH_ENCRYPTION_SECRET 설정 필요"
+                            onClick={startDeviceCodeFlow}
+                            className="text-[11px] px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors"
                           >
                             연결하기
                           </button>
-                        )}
-                        {(provider === "github" || provider === "google") && !info.webConnectable && !info.connected && (
-                          <span className="text-[10px] text-slate-500">Client ID 미설정</span>
-                        )}
-                        {isWebOAuth && info.connected && (
-                          <button
-                            onClick={() => handleDisconnect(provider as OAuthConnectProvider)}
-                            disabled={disconnecting === provider}
-                            className="text-xs px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 transition-colors disabled:opacity-50"
-                          >
-                            {disconnecting === provider ? "해제 중..." : "연결 해제"}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {info.connected && (
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      {info.email && (
-                        <div>
-                          <span className="text-slate-500">계정: </span>
-                          <span className="text-slate-300">{info.email}</span>
-                        </div>
-                      )}
-                      {info.source && (
-                        <div>
-                          <span className="text-slate-500">소스: </span>
-                          <span className="text-slate-300">{info.source}</span>
-                        </div>
-                      )}
-                      {info.scope && (
-                        <div className="col-span-2">
-                          <span className="text-slate-500">스코프: </span>
-                          <span className="text-slate-300 font-mono text-[10px]">{info.scope}</span>
-                        </div>
-                      )}
-                      {expiresAt && (
-                        <div>
-                          <span className="text-slate-500">만료: </span>
-                          <span className={isExpired ? "text-red-400" : "text-slate-300"}>
-                            {expiresAt.toLocaleString("ko-KR")}
-                          </span>
-                        </div>
-                      )}
-                      {info.created_at > 0 && (
-                      <div>
-                        <span className="text-slate-500">등록: </span>
-                        <span className="text-slate-300">
-                          {new Date(info.created_at).toLocaleString("ko-KR")}
-                        </span>
-                      </div>
+                        )
+                      ) : (
+                        /* Antigravity: Web redirect OAuth */
+                        <button
+                          onClick={() => handleConnect(id)}
+                          className="text-[11px] px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors"
+                        >
+                          연결하기
+                        </button>
                       )}
                     </div>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+              {/* Device Code flow status messages */}
+              {deviceStatus === "complete" && (
+                <div className="text-xs text-green-400 bg-green-500/10 border border-green-500/20 px-3 py-2 rounded-lg">
+                  GitHub Copilot 연결 완료!
+                </div>
+              )}
+              {deviceError && (
+                <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 px-3 py-2 rounded-lg">
+                  {deviceError}
+                </div>
+              )}
             </div>
-          )
+          </>
         ) : null}
       </section>
       )}

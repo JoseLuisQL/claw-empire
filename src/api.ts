@@ -211,7 +211,7 @@ export interface OAuthProviderStatus {
   webConnectable: boolean;
 }
 
-export type OAuthConnectProvider = "github" | "google";
+export type OAuthConnectProvider = "github-copilot" | "antigravity";
 
 export interface OAuthStatus {
   storageReady: boolean;
@@ -229,6 +229,29 @@ export function getOAuthStartUrl(provider: OAuthConnectProvider, redirectTo: str
 
 export async function disconnectOAuth(provider: OAuthConnectProvider): Promise<void> {
   await post('/api/oauth/disconnect', { provider });
+}
+
+// GitHub Device Code Flow
+export interface DeviceCodeStart {
+  stateId: string;
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+}
+
+export interface DevicePollResult {
+  status: "pending" | "complete" | "slow_down" | "expired" | "denied" | "error";
+  email?: string | null;
+  error?: string;
+}
+
+export async function startGitHubDeviceFlow(): Promise<DeviceCodeStart> {
+  return post('/api/oauth/github-copilot/device-start') as Promise<DeviceCodeStart>;
+}
+
+export async function pollGitHubDevice(stateId: string): Promise<DevicePollResult> {
+  return post('/api/oauth/github-copilot/device-poll', { stateId }) as Promise<DevicePollResult>;
 }
 
 // Git Worktree management
