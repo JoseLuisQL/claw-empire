@@ -73,6 +73,19 @@ function isLoopbackHostname(hostname: string): boolean {
   return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]";
 }
 
+function isLoopbackAddress(remoteAddress: string | undefined): boolean {
+  if (!remoteAddress) return false;
+  return (
+    remoteAddress === "127.0.0.1" ||
+    remoteAddress === "::1" ||
+    remoteAddress === "::ffff:127.0.0.1"
+  );
+}
+
+function isLoopbackRequest(req: { socket?: { remoteAddress?: string } }): boolean {
+  return isLoopbackAddress(req.socket?.remoteAddress);
+}
+
 function isTrustedOrigin(origin: string): boolean {
   try {
     const u = new URL(origin);
@@ -148,6 +161,47 @@ function isPublicApiPath(pathname: string): boolean {
   return false;
 }
 
+function incomingMessageBearerToken(req: IncomingMessage): string | null {
+  const raw = req.headers.authorization;
+  if (!raw || Array.isArray(raw)) return null;
+  const m = raw.match(/^Bearer\s+(.+)$/i);
+  return m?.[1]?.trim() ?? null;
+}
+
+function incomingMessageCookieToken(req: IncomingMessage): string | null {
+  const raw = req.headers.cookie;
+  if (!raw || Array.isArray(raw)) return null;
+  const cookies = parseCookies(raw);
+  const token = cookies[SESSION_COOKIE_NAME];
+  return typeof token === "string" && token.length > 0 ? token : null;
+}
+
+function incomingMessageQueryToken(req: IncomingMessage): string | null {
+  if (!req.url) return null;
+  try {
+    const u = new URL(req.url, "http://localhost");
+    const token = u.searchParams.get("auth");
+    return token && token.trim() ? token.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function isIncomingMessageAuthenticated(req: IncomingMessage): boolean {
+  const bearer = incomingMessageBearerToken(req);
+  if (bearer && bearer === SESSION_AUTH_TOKEN) return true;
+  const queryToken = incomingMessageQueryToken(req);
+  if (queryToken && queryToken === SESSION_AUTH_TOKEN) return true;
+  const cookie = incomingMessageCookieToken(req);
+  return cookie === SESSION_AUTH_TOKEN;
+}
+
+function isIncomingMessageOriginTrusted(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin || Array.isArray(origin)) return true;
+  return isTrustedOrigin(origin);
+}
+
 // ---------------------------------------------------------------------------
 // Express setup
 // ---------------------------------------------------------------------------
@@ -177,6 +231,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 app.use(express.json({ limit: "2mb" }));
 
 app.get("/api/auth/session", (req, res) => {
+  const bearer = bearerToken(req);
+  const hasBearerAuth = bearer === SESSION_AUTH_TOKEN;
+  if (!isLoopbackRequest(req) && !hasBearerAuth) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
   issueSessionCookie(req, res);
   res.json({ ok: true });
 });
@@ -185,7 +244,6 @@ app.use((req, res, next) => {
   if (!req.path.startsWith("/api/")) return next();
   if (isPublicApiPath(req.path)) return next();
   if (!isAuthenticated(req)) {
-    issueSessionCookie(req, res);
     return res.status(401).json({ error: "unauthorized" });
   }
   issueSessionCookie(req, res);
@@ -10771,7 +10829,11 @@ setInterval(async () => {
 // WebSocket server on same HTTP server
 const wss = new WebSocketServer({ server });
 
-wss.on("connection", (ws: WebSocket, _req: IncomingMessage) => {
+wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
+  if (!isIncomingMessageOriginTrusted(req) || !isIncomingMessageAuthenticated(req)) {
+    ws.close(1008, "unauthorized");
+    return;
+  }
   wsClients.add(ws);
   console.log(`[Claw-Empire] WebSocket client connected (total: ${wsClients.size})`);
 

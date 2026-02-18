@@ -7,10 +7,12 @@ export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const listenersRef = useRef<Map<WSEventType, Set<Listener>>>(new Map());
   const [connected, setConnected] = useState(false);
+  const authToken = (import.meta.env.VITE_API_AUTH_TOKEN as string | undefined)?.trim() ?? '';
 
   useEffect(() => {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${proto}//${location.host}/ws`;
+    const wsAuth = authToken ? `?auth=${encodeURIComponent(authToken)}` : "";
+    const url = `${proto}//${location.host}/ws${wsAuth}`;
     let alive = true;
     let ws: WebSocket;
     let reconnectTimer: ReturnType<typeof setTimeout>;
@@ -20,6 +22,7 @@ export function useWebSocket() {
       try {
         await fetch('/api/auth/session', {
           method: 'GET',
+          headers: authToken ? { authorization: `Bearer ${authToken}` } : undefined,
           credentials: 'same-origin',
         });
       } catch {
@@ -55,7 +58,7 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer);
       ws?.close();
     };
-  }, []);
+  }, [authToken]);
 
   const on = useCallback((type: WSEventType, fn: Listener) => {
     if (!listenersRef.current.has(type)) {

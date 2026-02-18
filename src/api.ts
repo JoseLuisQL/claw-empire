@@ -9,11 +9,21 @@ import type {
 
 const base = '';
 const SESSION_BOOTSTRAP_PATH = '/api/auth/session';
+const API_AUTH_TOKEN = (import.meta.env.VITE_API_AUTH_TOKEN as string | undefined)?.trim() ?? '';
+
+function withAuthHeaders(init?: HeadersInit): Headers {
+  const headers = new Headers(init);
+  if (API_AUTH_TOKEN && !headers.has('authorization')) {
+    headers.set('authorization', `Bearer ${API_AUTH_TOKEN}`);
+  }
+  return headers;
+}
 
 async function bootstrapSession(): Promise<void> {
   try {
     await fetch(`${base}${SESSION_BOOTSTRAP_PATH}`, {
       method: 'GET',
+      headers: withAuthHeaders(),
       credentials: 'same-origin',
     });
   } catch {
@@ -22,9 +32,11 @@ async function bootstrapSession(): Promise<void> {
 }
 
 async function request<T>(url: string, init?: RequestInit, canRetryAuth = true): Promise<T> {
+  const headers = withAuthHeaders(init?.headers);
   const r = await fetch(`${base}${url}`, {
     credentials: 'same-origin',
     ...init,
+    headers,
   });
   if (r.status === 401 && canRetryAuth && url !== SESSION_BOOTSTRAP_PATH) {
     await bootstrapSession();
