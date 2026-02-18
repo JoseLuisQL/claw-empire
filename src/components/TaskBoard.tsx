@@ -111,6 +111,13 @@ const COLUMNS: {
     dotColor: 'bg-blue-400',
   },
   {
+    status: 'collaborating',
+    icon: '🤝',
+    headerBg: 'bg-indigo-900',
+    borderColor: 'border-indigo-700',
+    dotColor: 'bg-indigo-400',
+  },
+  {
     status: 'in_progress',
     icon: '⚡',
     headerBg: 'bg-amber-900',
@@ -150,6 +157,7 @@ const COLUMNS: {
 const STATUS_OPTIONS: TaskStatus[] = [
   'inbox',
   'planned',
+  'collaborating',
   'in_progress',
   'review',
   'done',
@@ -940,7 +948,7 @@ function TaskCard({
             &#128421;
           </button>
         )}
-        {(task.status === 'planned' || task.status === 'in_progress' || task.status === 'review' || task.status === 'done' || task.status === 'pending') && onOpenMeetingMinutes && (
+        {(task.status === 'planned' || task.status === 'collaborating' || task.status === 'in_progress' || task.status === 'review' || task.status === 'done' || task.status === 'pending') && onOpenMeetingMinutes && (
           <button
             onClick={() => onOpenMeetingMinutes(task.id)}
             title={t({

@@ -47,6 +47,7 @@ const PKG_VERSION: string = (() => {
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? "127.0.0.1";
+const OAUTH_BASE_HOST = HOST === "0.0.0.0" || HOST === "::" ? "127.0.0.1" : HOST;
 
 // ---------------------------------------------------------------------------
 // Express setup
@@ -93,7 +94,7 @@ function decryptSecret(payload: string): string {
 // ---------------------------------------------------------------------------
 // OAuth web-auth constants & PKCE helpers
 // ---------------------------------------------------------------------------
-const OAUTH_BASE_URL = process.env.OAUTH_BASE_URL || `http://${HOST}:${PORT}`;
+const OAUTH_BASE_URL = process.env.OAUTH_BASE_URL || `http://${OAUTH_BASE_HOST}:${PORT}`;
 
 // Built-in OAuth client credentials (same as OpenClaw/Claw-Kanban built-in values)
 const BUILTIN_GITHUB_CLIENT_ID = "Iv1.b507a08c87ecfe98";
@@ -127,7 +128,12 @@ function sanitizeOAuthRedirect(raw: string | undefined): string {
   if (!raw) return "/";
   try {
     const u = new URL(raw);
-    if (u.hostname === "localhost" || u.hostname === "127.0.0.1") return raw;
+    if (
+      u.hostname === "localhost" ||
+      u.hostname === "127.0.0.1" ||
+      u.hostname === "::1" ||
+      u.hostname.endsWith(".ts.net")
+    ) return raw;
   } catch { /* not absolute URL — treat as path */ }
   if (raw.startsWith("/")) return raw;
   return "/";
@@ -212,7 +218,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   description TEXT,
   department_id TEXT REFERENCES departments(id),
   assigned_agent_id TEXT REFERENCES agents(id),
-  status TEXT NOT NULL DEFAULT 'inbox' CHECK(status IN ('inbox','planned','in_progress','review','done','cancelled')),
+  status TEXT NOT NULL DEFAULT 'inbox' CHECK(status IN ('inbox','planned','collaborating','in_progress','review','done','cancelled')),
   priority INTEGER DEFAULT 0,
   task_type TEXT DEFAULT 'general' CHECK(task_type IN ('general','development','design','analysis','presentation','documentation')),
   project_path TEXT,
@@ -329,6 +335,9 @@ try { db.exec("ALTER TABLE oauth_credentials ADD COLUMN refresh_token_enc TEXT")
 // Subtask cross-department delegation columns
 try { db.exec("ALTER TABLE subtasks ADD COLUMN target_department_id TEXT"); } catch { /* already exists */ }
 try { db.exec("ALTER TABLE subtasks ADD COLUMN delegated_task_id TEXT"); } catch { /* already exists */ }
+
+// Cross-department collaboration: link collaboration task back to original task
+try { db.exec("ALTER TABLE tasks ADD COLUMN source_task_id TEXT"); } catch { /* already exists */ }
 
 // ---------------------------------------------------------------------------
 // Seed default data
@@ -2050,10 +2059,11 @@ function readCodexTokens(): { access_token: string; account_id: string } | null 
   return null;
 }
 
-// Gemini OAuth client credentials (public installed-app creds from Gemini CLI source;
-// safe to embed per Google's installed app guidelines)
-const GEMINI_OAUTH_CLIENT_ID = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
-const GEMINI_OAUTH_CLIENT_SECRET = "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";
+// Gemini OAuth refresh credentials must come from env in public deployments.
+const GEMINI_OAUTH_CLIENT_ID =
+  process.env.GEMINI_OAUTH_CLIENT_ID ?? process.env.OAUTH_GOOGLE_CLIENT_ID ?? "";
+const GEMINI_OAUTH_CLIENT_SECRET =
+  process.env.GEMINI_OAUTH_CLIENT_SECRET ?? process.env.OAUTH_GOOGLE_CLIENT_SECRET ?? "";
 
 interface GeminiCreds {
   access_token: string;
@@ -2108,6 +2118,8 @@ async function freshGeminiToken(): Promise<string | null> {
   if (creds.expiry_date > Date.now() + 300_000) return creds.access_token;
   // Cannot refresh without refresh_token
   if (!creds.refresh_token) return creds.access_token; // try existing token anyway
+  // Public repo safety: no embedded secrets, so refresh requires explicit env config.
+  if (!GEMINI_OAUTH_CLIENT_ID || !GEMINI_OAUTH_CLIENT_SECRET) return null;
   // Refresh using Gemini CLI's public OAuth client credentials
   try {
     const resp = await fetch("https://oauth2.googleapis.com/token", {
@@ -2753,6 +2765,7 @@ function isAgentInMeeting(agentId: string): boolean {
 }
 
 function callLeadersToCeoOffice(taskId: string, leaders: AgentRow[], phase: "kickoff" | "review"): void {
+  console.log(`[CEO_CALL] callLeadersToCeoOffice: task=${taskId} phase=${phase} leaders=${leaders.length} ids=[${leaders.slice(0,6).map(l=>l.id).join(",")}]`);
   leaders.slice(0, 6).forEach((leader, seatIndex) => {
     markAgentInMeeting(leader.id);
     broadcast("ceo_office_call", {
@@ -2805,7 +2818,9 @@ function startReviewConsensusMeeting(
   void (async () => {
     let meetingId: string | null = null;
     const leaders = getTaskReviewLeaders(taskId, departmentId);
+    console.log(`[CEO_CALL] startReviewConsensusMeeting: task=${taskId} leaders=${leaders.length}`);
     if (leaders.length === 0) {
+      console.log(`[CEO_CALL] startReviewConsensusMeeting: NO LEADERS, skipping meeting`);
       reviewInFlight.delete(taskId);
       onApproved();
       return;
@@ -3149,13 +3164,18 @@ function startPlannedApprovalMeeting(
   onApproved: (planningNotes?: string[]) => void,
 ): void {
   const lockKey = `planned:${taskId}`;
-  if (reviewInFlight.has(lockKey)) return;
+  if (reviewInFlight.has(lockKey)) {
+    console.log(`[CEO_CALL] startPlannedApprovalMeeting BLOCKED: reviewInFlight has ${lockKey}`);
+    return;
+  }
   reviewInFlight.add(lockKey);
 
   void (async () => {
     let meetingId: string | null = null;
     const leaders = getTaskReviewLeaders(taskId, departmentId);
+    console.log(`[CEO_CALL] startPlannedApprovalMeeting: task=${taskId} leaders=${leaders.length}`);
     if (leaders.length === 0) {
+      console.log(`[CEO_CALL] startPlannedApprovalMeeting: NO LEADERS, skipping meeting`);
       reviewInFlight.delete(lockKey);
       onApproved([]);
       return;
@@ -3967,12 +3987,16 @@ app.get("/api/tasks/:id", (req, res) => {
 
 app.get("/api/tasks/:id/meeting-minutes", (req, res) => {
   const id = String(req.params.id);
-  const exists = db.prepare("SELECT id FROM tasks WHERE id = ?").get(id) as { id: string } | undefined;
-  if (!exists) return res.status(404).json({ error: "not_found" });
+  const task = db.prepare("SELECT id, source_task_id FROM tasks WHERE id = ?").get(id) as { id: string; source_task_id: string | null } | undefined;
+  if (!task) return res.status(404).json({ error: "not_found" });
+
+  // Include meeting minutes from the source (original) task if this is a collaboration task
+  const taskIds = [id];
+  if (task.source_task_id) taskIds.push(task.source_task_id);
 
   const meetings = db.prepare(
-    "SELECT * FROM meeting_minutes WHERE task_id = ? ORDER BY started_at DESC, round DESC"
-  ).all(id) as MeetingMinutesRow[];
+    `SELECT * FROM meeting_minutes WHERE task_id IN (${taskIds.map(() => '?').join(',')}) ORDER BY started_at DESC, round DESC`
+  ).all(...taskIds) as MeetingMinutesRow[];
 
   const data = meetings.map((meeting) => {
     const entries = db.prepare(
@@ -4084,7 +4108,7 @@ app.get("/api/subtasks", (req, res) => {
     subtasks = db.prepare(`
       SELECT s.* FROM subtasks s
       JOIN tasks t ON s.task_id = t.id
-      WHERE t.status = 'in_progress'
+      WHERE t.status IN ('planned', 'collaborating', 'in_progress', 'review')
       ORDER BY s.created_at
     `).all();
   } else {
@@ -4254,7 +4278,7 @@ app.post("/api/tasks/:id/run", (req, res) => {
   } | undefined;
   if (!task) return res.status(404).json({ error: "not_found" });
 
-  if (task.status === "in_progress") {
+  if (task.status === "in_progress" || task.status === "collaborating") {
     return res.status(400).json({ error: "already_running" });
   }
 
@@ -5412,9 +5436,9 @@ function delegateSubtaskSequential(
       [`[SubTask 委派来源 ${getDeptName(parentTask.department_id ?? "")}] ${parentTask.description || parentTask.title}`],
     ), lang);
     db.prepare(`
-      INSERT INTO tasks (id, title, description, department_id, status, priority, task_type, project_path, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'planned', 1, 'general', ?, ?, ?)
-    `).run(delegatedTaskId, delegatedTitle, delegatedDescription, targetDeptId, parentTask.project_path, ct, ct);
+      INSERT INTO tasks (id, title, description, department_id, status, priority, task_type, project_path, source_task_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'planned', 1, 'general', ?, ?, ?, ?)
+    `).run(delegatedTaskId, delegatedTitle, delegatedDescription, targetDeptId, parentTask.project_path, parentTask.id, ct, ct);
     appendTaskLog(delegatedTaskId, "system", `Subtask delegation from '${parentTask.title}' → ${targetDeptName}`);
     broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(delegatedTaskId));
 
@@ -5634,9 +5658,9 @@ function startCrossDeptCooperation(
     ), lang);
     const crossDetectedPath = detectProjectPath(ceoMessage);
     db.prepare(`
-      INSERT INTO tasks (id, title, description, department_id, status, priority, task_type, project_path, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'planned', 1, 'general', ?, ?, ?)
-    `).run(crossTaskId, crossTaskTitle, `[Cross-dept from ${leaderDeptName}] ${ceoMessage}`, crossDeptId, crossDetectedPath, ct, ct);
+      INSERT INTO tasks (id, title, description, department_id, status, priority, task_type, project_path, source_task_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'planned', 1, 'general', ?, ?, ?, ?)
+    `).run(crossTaskId, crossTaskTitle, `[Cross-dept from ${leaderDeptName}] ${ceoMessage}`, crossDeptId, crossDetectedPath, taskId, ct, ct);
     appendTaskLog(crossTaskId, "system", `Cross-dept request from ${leaderName} (${leaderDeptName})`);
     broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(crossTaskId));
 
@@ -6011,6 +6035,10 @@ function handleTaskDelegation(
         [`[CEO OFFICE] 企画チームの先行協業を開始: ${crossDeptNames}`],
         [`[CEO OFFICE] 企划团队前置协作已启动：${crossDeptNames}`],
       ), lang), taskId);
+      // Mark original task as 'collaborating' while cross-dept work proceeds
+      db.prepare("UPDATE tasks SET status = 'collaborating', updated_at = ? WHERE id = ?").run(nowMs(), taskId);
+      broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
+
       startCrossDeptCooperation(
         mentionedDepts,
         0,
@@ -6033,6 +6061,12 @@ function handleTaskDelegation(
       const crossDelay = 3000 + Math.random() * 1000;
       setTimeout(() => {
         if (isTaskWorkflowInterrupted(taskId)) return;
+        // Only set 'collaborating' if the task hasn't already moved to 'in_progress' (avoid status regression)
+        const currentTask = db.prepare("SELECT status FROM tasks WHERE id = ?").get(taskId) as { status: string } | undefined;
+        if (currentTask && currentTask.status !== 'in_progress') {
+          db.prepare("UPDATE tasks SET status = 'collaborating', updated_at = ? WHERE id = ?").run(nowMs(), taskId);
+          broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
+        }
         startCrossDeptCooperation(mentionedDepts, 0, {
           teamLeader, taskTitle, ceoMessage, leaderDeptId, leaderDeptName, leaderName, lang, taskId,
         });
@@ -6468,6 +6502,7 @@ app.get("/api/stats", (_req, res) => {
   const plannedTasks = (db.prepare("SELECT COUNT(*) as cnt FROM tasks WHERE status = 'planned'").get() as { cnt: number }).cnt;
   const reviewTasks = (db.prepare("SELECT COUNT(*) as cnt FROM tasks WHERE status = 'review'").get() as { cnt: number }).cnt;
   const cancelledTasks = (db.prepare("SELECT COUNT(*) as cnt FROM tasks WHERE status = 'cancelled'").get() as { cnt: number }).cnt;
+  const collaboratingTasks = (db.prepare("SELECT COUNT(*) as cnt FROM tasks WHERE status = 'collaborating'").get() as { cnt: number }).cnt;
 
   const totalAgents = (db.prepare("SELECT COUNT(*) as cnt FROM agents").get() as { cnt: number }).cnt;
   const workingAgents = (db.prepare("SELECT COUNT(*) as cnt FROM agents WHERE status = 'working'").get() as { cnt: number }).cnt;
@@ -6508,6 +6543,7 @@ app.get("/api/stats", (_req, res) => {
         in_progress: inProgressTasks,
         inbox: inboxTasks,
         planned: plannedTasks,
+        collaborating: collaboratingTasks,
         review: reviewTasks,
         cancelled: cancelledTasks,
         completion_rate: completionRate,

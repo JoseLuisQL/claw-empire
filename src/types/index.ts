@@ -38,7 +38,7 @@ export interface Agent {
 }
 
 // Task
-export type TaskStatus = 'inbox' | 'planned' | 'in_progress' | 'review' | 'done' | 'pending' | 'cancelled';
+export type TaskStatus = 'inbox' | 'planned' | 'collaborating' | 'in_progress' | 'review' | 'done' | 'pending' | 'cancelled';
 export type TaskType = 'general' | 'development' | 'design' | 'analysis' | 'presentation' | 'documentation';
 
 export interface Task {
@@ -57,6 +57,7 @@ export interface Task {
   completed_at: number | null;
   created_at: number;
   updated_at: number;
+  source_task_id?: string | null;
   subtask_total?: number;
   subtask_done?: number;
 }
@@ -131,6 +132,7 @@ export interface CompanyStats {
     in_progress: number;
     inbox: number;
     planned: number;
+    collaborating: number;
     review: number;
     cancelled: number;
     completion_rate: number;
