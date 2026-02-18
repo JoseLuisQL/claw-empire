@@ -299,6 +299,10 @@ CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_type, rece
 try { db.exec("ALTER TABLE oauth_credentials ADD COLUMN access_token_enc TEXT"); } catch { /* already exists */ }
 try { db.exec("ALTER TABLE oauth_credentials ADD COLUMN refresh_token_enc TEXT"); } catch { /* already exists */ }
 
+// Subtask cross-department delegation columns
+try { db.exec("ALTER TABLE subtasks ADD COLUMN target_department_id TEXT"); } catch { /* already exists */ }
+try { db.exec("ALTER TABLE subtasks ADD COLUMN delegated_task_id TEXT"); } catch { /* already exists */ }
+
 // ---------------------------------------------------------------------------
 // Seed default data
 // ---------------------------------------------------------------------------
@@ -410,6 +414,7 @@ if (agentCount === 0) {
 // Track active child processes
 // ---------------------------------------------------------------------------
 const activeProcesses = new Map<string, ChildProcess>();
+const stopRequestedTasks = new Set<string>();
 
 // ---------------------------------------------------------------------------
 // Git Worktree support — agent isolation per task
@@ -550,6 +555,20 @@ function cleanupWorktree(projectPath: string, taskId: string): void {
   console.log(`[CLImpire] Cleaned up worktree for task ${shortId}`);
 }
 
+function rollbackTaskWorktree(taskId: string, reason: string): boolean {
+  const info = taskWorktrees.get(taskId);
+  if (!info) return false;
+
+  const diffSummary = getWorktreeDiffSummary(info.projectPath, taskId);
+  if (diffSummary && diffSummary !== "변경사항 없음" && diffSummary !== "diff 조회 실패") {
+    appendTaskLog(taskId, "system", `Rollback(${reason}) diff summary:\n${diffSummary}`);
+  }
+
+  cleanupWorktree(info.projectPath, taskId);
+  appendTaskLog(taskId, "system", `Worktree rollback completed (${reason})`);
+  return true;
+}
+
 function getWorktreeDiffSummary(projectPath: string, taskId: string): string {
   const info = taskWorktrees.get(taskId);
   if (!info) return "";
@@ -587,12 +606,17 @@ function broadcast(type: string, payload: unknown): void {
 // ---------------------------------------------------------------------------
 // CLI spawn helpers (ported from claw-kanban)
 // ---------------------------------------------------------------------------
-function buildAgentArgs(provider: string): string[] {
+function buildAgentArgs(provider: string, model?: string, reasoningLevel?: string): string[] {
   switch (provider) {
-    case "codex":
-      return ["codex", "--yolo", "exec", "--json"];
-    case "claude":
-      return [
+    case "codex": {
+      const args = ["codex", "--enable", "multi_agent"];
+      if (model) args.push("-m", model);
+      if (reasoningLevel) args.push("-c", `model_reasoning_effort="${reasoningLevel}"`);
+      args.push("--yolo", "exec", "--json");
+      return args;
+    }
+    case "claude": {
+      const args = [
         "claude",
         "--dangerously-skip-permissions",
         "--print",
@@ -600,10 +624,21 @@ function buildAgentArgs(provider: string): string[] {
         "--output-format=stream-json",
         "--include-partial-messages",
       ];
-    case "gemini":
-      return ["gemini", "--yolo", "--output-format=stream-json"];
-    case "opencode":
-      return ["opencode", "run", "--format", "json"];
+      if (model) args.push("--model", model);
+      return args;
+    }
+    case "gemini": {
+      const args = ["gemini"];
+      if (model) args.push("-m", model);
+      args.push("--yolo", "--output-format=stream-json");
+      return args;
+    }
+    case "opencode": {
+      const args = ["opencode", "run"];
+      if (model) args.push("-m", model);
+      args.push("--format", "json");
+      return args;
+    }
     case "copilot":
     case "antigravity":
       throw new Error(`${provider} uses HTTP agent (not CLI spawn)`);
@@ -644,8 +679,152 @@ function getRecentConversationContext(agentId: string, limit = 10): string {
 }
 
 // ---------------------------------------------------------------------------
+// Subtask department detection — re-uses DEPT_KEYWORDS + detectTargetDepartments
+// ---------------------------------------------------------------------------
+function analyzeSubtaskDepartment(subtaskTitle: string, parentDeptId: string | null): string | null {
+  const detectedDepts = detectTargetDepartments(subtaskTitle);
+  const foreignDepts = detectedDepts.filter(d => d !== parentDeptId);
+  return foreignDepts[0] ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// SubTask creation/completion helpers (shared across all CLI providers)
+// ---------------------------------------------------------------------------
+function createSubtaskFromCli(taskId: string, toolUseId: string, title: string): void {
+  const subId = randomUUID();
+  const parentAgent = db.prepare(
+    "SELECT assigned_agent_id FROM tasks WHERE id = ?"
+  ).get(taskId) as { assigned_agent_id: string | null } | undefined;
+
+  db.prepare(`
+    INSERT INTO subtasks (id, task_id, title, status, assigned_agent_id, cli_tool_use_id, created_at)
+    VALUES (?, ?, ?, 'in_progress', ?, ?, ?)
+  `).run(subId, taskId, title, parentAgent?.assigned_agent_id ?? null, toolUseId, nowMs());
+
+  // Detect if this subtask belongs to a foreign department
+  const parentTaskDept = db.prepare(
+    "SELECT department_id FROM tasks WHERE id = ?"
+  ).get(taskId) as { department_id: string | null } | undefined;
+  const targetDeptId = analyzeSubtaskDepartment(title, parentTaskDept?.department_id ?? null);
+
+  if (targetDeptId) {
+    const targetDeptName = getDeptName(targetDeptId);
+    db.prepare(
+      "UPDATE subtasks SET target_department_id = ?, status = 'blocked', blocked_reason = ? WHERE id = ?"
+    ).run(targetDeptId, `${targetDeptName} 협업 대기`, subId);
+  }
+
+  const subtask = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(subId);
+  broadcast("subtask_update", subtask);
+}
+
+function completeSubtaskFromCli(toolUseId: string): void {
+  const existing = db.prepare(
+    "SELECT id, status FROM subtasks WHERE cli_tool_use_id = ?"
+  ).get(toolUseId) as { id: string; status: string } | undefined;
+  if (!existing || existing.status === "done") return;
+
+  db.prepare(
+    "UPDATE subtasks SET status = 'done', completed_at = ? WHERE id = ?"
+  ).run(nowMs(), existing.id);
+
+  const subtask = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(existing.id);
+  broadcast("subtask_update", subtask);
+}
+
+function seedApprovedPlanSubtasks(taskId: string, ownerDeptId: string | null): void {
+  const existing = db.prepare(
+    "SELECT COUNT(*) as cnt FROM subtasks WHERE task_id = ?"
+  ).get(taskId) as { cnt: number };
+  if (existing.cnt > 0) return;
+
+  const task = db.prepare(
+    "SELECT title, description, assigned_agent_id, department_id FROM tasks WHERE id = ?"
+  ).get(taskId) as {
+    title: string;
+    description: string | null;
+    assigned_agent_id: string | null;
+    department_id: string | null;
+  } | undefined;
+  if (!task) return;
+
+  const baseDeptId = ownerDeptId ?? task.department_id;
+  const relatedDepts = getTaskRelatedDepartmentIds(taskId, baseDeptId)
+    .filter((d) => !!d && d !== baseDeptId);
+
+  const now = nowMs();
+  const baseAssignee = task.assigned_agent_id;
+
+  const items: Array<{
+    title: string;
+    description: string;
+    status: "pending" | "blocked";
+    assignedAgentId: string | null;
+    blockedReason: string | null;
+    targetDepartmentId: string | null;
+  }> = [
+    {
+      title: "승인안 상세 실행 계획 확정",
+      description: `Approved 기획안 기준으로 상세 작업 순서/산출물 기준을 확정합니다. (${task.title})`,
+      status: "pending",
+      assignedAgentId: baseAssignee,
+      blockedReason: null,
+      targetDepartmentId: null,
+    },
+  ];
+
+  for (const deptId of relatedDepts) {
+    const deptName = getDeptName(deptId);
+    const crossLeader = findTeamLeader(deptId);
+    items.push({
+      title: `[협업] ${deptName} 결과물 작성`,
+      description: `Approved 기획안 기준 ${deptName} 담당 결과물을 작성/공유합니다.`,
+      status: "blocked",
+      assignedAgentId: crossLeader?.id ?? null,
+      blockedReason: `${deptName} 협업 대기`,
+      targetDepartmentId: deptId,
+    });
+  }
+
+  items.push({
+    title: "부서 산출물 통합 및 최종 정리",
+    description: "유관부서 산출물을 취합해 단일 결과물로 통합하고 Review 제출본을 준비합니다.",
+    status: "pending",
+    assignedAgentId: baseAssignee,
+    blockedReason: null,
+    targetDepartmentId: null,
+  });
+
+  for (const st of items) {
+    const sid = randomUUID();
+    db.prepare(`
+      INSERT INTO subtasks (id, task_id, title, description, status, assigned_agent_id, blocked_reason, target_department_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      sid,
+      taskId,
+      st.title,
+      st.description,
+      st.status,
+      st.assignedAgentId,
+      st.blockedReason,
+      st.targetDepartmentId,
+      now,
+    );
+    broadcast("subtask_update", db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sid));
+  }
+
+  appendTaskLog(taskId, "system", `Approved plan seeded ${items.length} subtasks (cross-dept: ${relatedDepts.length})`);
+  notifyCeo(`'${task.title}' 승인안 기준 SubTask ${items.length}건을 생성하고 담당자/유관부서 협업을 배정했습니다.`, taskId);
+}
+
+// ---------------------------------------------------------------------------
 // SubTask parsing from CLI stream-json output
 // ---------------------------------------------------------------------------
+
+// Codex multi-agent: map thread_id → cli_tool_use_id (item.id from spawn_agent)
+const codexThreadToSubtask = new Map<string, string>();
+
 function parseAndCreateSubtasks(taskId: string, data: string): void {
   try {
     const lines = data.split("\n").filter(Boolean);
@@ -653,7 +832,7 @@ function parseAndCreateSubtasks(taskId: string, data: string): void {
       let j: Record<string, unknown>;
       try { j = JSON.parse(line); } catch { continue; }
 
-      // Detect sub-agent spawn: tool_use with tool === "Task"
+      // Detect sub-agent spawn: tool_use with tool === "Task" (Claude Code)
       if (j.type === "tool_use" && j.tool === "Task") {
         const toolUseId = (j.id as string) || `sub-${Date.now()}`;
         // Check for duplicate
@@ -667,36 +846,87 @@ function parseAndCreateSubtasks(taskId: string, data: string): void {
                       (input?.prompt as string)?.slice(0, 100) ||
                       "Sub-task";
 
-        const subId = randomUUID();
-        const parentAgent = db.prepare(
-          "SELECT assigned_agent_id FROM tasks WHERE id = ?"
-        ).get(taskId) as { assigned_agent_id: string | null } | undefined;
-
-        db.prepare(`
-          INSERT INTO subtasks (id, task_id, title, status, assigned_agent_id, cli_tool_use_id, created_at)
-          VALUES (?, ?, ?, 'in_progress', ?, ?, ?)
-        `).run(subId, taskId, title, parentAgent?.assigned_agent_id ?? null, toolUseId, nowMs());
-
-        const subtask = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(subId);
-        broadcast("subtask_update", subtask);
+        createSubtaskFromCli(taskId, toolUseId, title);
       }
 
-      // Detect sub-agent completion: tool_result with tool === "Task"
+      // Detect sub-agent completion: tool_result with tool === "Task" (Claude Code)
       if (j.type === "tool_result" && j.tool === "Task") {
         const toolUseId = j.id as string;
         if (!toolUseId) continue;
+        completeSubtaskFromCli(toolUseId);
+      }
 
-        const existing = db.prepare(
-          "SELECT id, status FROM subtasks WHERE cli_tool_use_id = ?"
-        ).get(toolUseId) as { id: string; status: string } | undefined;
-        if (!existing || existing.status === "done") continue;
+      // ----- Codex multi-agent: spawn_agent / close_agent -----
 
-        db.prepare(
-          "UPDATE subtasks SET status = 'done', completed_at = ? WHERE id = ?"
-        ).run(nowMs(), existing.id);
+      // Codex: spawn_agent started → create subtask
+      if (j.type === "item.started") {
+        const item = j.item as Record<string, unknown> | undefined;
+        if (item?.type === "collab_tool_call" && item?.tool === "spawn_agent") {
+          const itemId = (item.id as string) || `codex-spawn-${Date.now()}`;
+          const existing = db.prepare(
+            "SELECT id FROM subtasks WHERE cli_tool_use_id = ?"
+          ).get(itemId) as { id: string } | undefined;
+          if (!existing) {
+            const prompt = (item.prompt as string) || "Sub-agent";
+            const title = prompt.split("\n")[0].replace(/^Task:\s*/, "").slice(0, 100);
+            createSubtaskFromCli(taskId, itemId, title);
+          }
+        }
+      }
 
-        const subtask = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(existing.id);
-        broadcast("subtask_update", subtask);
+      // Codex: spawn_agent completed → save thread_id mapping
+      // Codex: close_agent completed → complete subtask via thread_id
+      if (j.type === "item.completed") {
+        const item = j.item as Record<string, unknown> | undefined;
+        if (item?.type === "collab_tool_call") {
+          if (item.tool === "spawn_agent") {
+            const itemId = item.id as string;
+            const threadIds = (item.receiver_thread_ids as string[]) || [];
+            if (itemId && threadIds[0]) {
+              codexThreadToSubtask.set(threadIds[0], itemId);
+            }
+          } else if (item.tool === "close_agent") {
+            const threadIds = (item.receiver_thread_ids as string[]) || [];
+            for (const tid of threadIds) {
+              const origItemId = codexThreadToSubtask.get(tid);
+              if (origItemId) {
+                completeSubtaskFromCli(origItemId);
+                codexThreadToSubtask.delete(tid);
+              }
+            }
+          }
+        }
+      }
+
+      // ----- Gemini: plan-based subtask detection from message -----
+
+      if (j.type === "message" && j.content) {
+        const content = j.content as string;
+        // Detect plan output: {"subtasks": [...]}
+        const planMatch = content.match(/\{"subtasks"\s*:\s*\[.*?\]\}/s);
+        if (planMatch) {
+          try {
+            const plan = JSON.parse(planMatch[0]) as { subtasks: { title: string }[] };
+            for (const st of plan.subtasks) {
+              const stId = `gemini-plan-${st.title.slice(0, 30).replace(/\s/g, "-")}-${Date.now()}`;
+              const existing = db.prepare(
+                "SELECT id FROM subtasks WHERE task_id = ? AND title = ? AND status != 'done'"
+              ).get(taskId, st.title) as { id: string } | undefined;
+              if (!existing) {
+                createSubtaskFromCli(taskId, stId, st.title);
+              }
+            }
+          } catch { /* ignore malformed JSON */ }
+        }
+        // Detect completion report: {"subtask_done": "..."}
+        const doneMatch = content.match(/\{"subtask_done"\s*:\s*"(.+?)"\}/);
+        if (doneMatch) {
+          const doneTitle = doneMatch[1];
+          const sub = db.prepare(
+            "SELECT cli_tool_use_id FROM subtasks WHERE task_id = ? AND title = ? AND status != 'done' LIMIT 1"
+          ).get(taskId, doneTitle) as { cli_tool_use_id: string } | undefined;
+          if (sub) completeSubtaskFromCli(sub.cli_tool_use_id);
+        }
       }
     }
   } catch {
@@ -710,12 +940,14 @@ function spawnCliAgent(
   prompt: string,
   projectPath: string,
   logPath: string,
+  model?: string,
+  reasoningLevel?: string,
 ): ChildProcess {
   // Save prompt for debugging
   const promptPath = path.join(logsDir, `${taskId}.prompt.txt`);
   fs.writeFileSync(promptPath, prompt, "utf8");
 
-  const args = buildAgentArgs(provider);
+  const args = buildAgentArgs(provider, model, reasoningLevel);
   const logStream = fs.createWriteStream(logPath, { flags: "w" });
 
   // Remove CLAUDECODE env var to prevent "nested session" detection
@@ -803,7 +1035,7 @@ function getDecryptedOAuthToken(provider: string): DecryptedOAuthToken | null {
   };
 }
 
-function getProviderModelConfig(): Record<string, { model: string }> {
+function getProviderModelConfig(): Record<string, { model: string; subModel?: string; reasoningLevel?: string; subModelReasoningLevel?: string }> {
   const row = db.prepare("SELECT value FROM settings WHERE key = 'providerModelConfig'").get() as { value: string } | undefined;
   return row ? JSON.parse(row.value) : {};
 }
@@ -911,6 +1143,50 @@ async function loadCodeAssistProject(accessToken: string, signal?: AbortSignal):
   return ANTIGRAVITY_DEFAULT_PROJECT;
 }
 
+// ---------------------------------------------------------------------------
+// HTTP agent subtask detection (plain-text accumulator for plan JSON patterns)
+// ---------------------------------------------------------------------------
+function parseHttpAgentSubtasks(taskId: string, textChunk: string, accum: { buf: string }): void {
+  accum.buf += textChunk;
+  // Only scan when we see a closing brace (potential JSON end)
+  if (!accum.buf.includes("}")) return;
+
+  // Detect plan: {"subtasks": [...]}
+  const planMatch = accum.buf.match(/\{"subtasks"\s*:\s*\[.*?\]\}/s);
+  if (planMatch) {
+    try {
+      const plan = JSON.parse(planMatch[0]) as { subtasks: { title: string }[] };
+      for (const st of plan.subtasks) {
+        const stId = `http-plan-${st.title.slice(0, 30).replace(/\s/g, "-")}-${Date.now()}`;
+        const existing = db.prepare(
+          "SELECT id FROM subtasks WHERE task_id = ? AND title = ? AND status != 'done'"
+        ).get(taskId, st.title) as { id: string } | undefined;
+        if (!existing) {
+          createSubtaskFromCli(taskId, stId, st.title);
+        }
+      }
+    } catch { /* ignore malformed JSON */ }
+    // Remove matched portion to avoid re-detection
+    accum.buf = accum.buf.slice(accum.buf.indexOf(planMatch[0]) + planMatch[0].length);
+  }
+
+  // Detect completion: {"subtask_done": "..."}
+  const doneMatch = accum.buf.match(/\{"subtask_done"\s*:\s*"(.+?)"\}/);
+  if (doneMatch) {
+    const doneTitle = doneMatch[1];
+    const sub = db.prepare(
+      "SELECT cli_tool_use_id FROM subtasks WHERE task_id = ? AND title = ? AND status != 'done' LIMIT 1"
+    ).get(taskId, doneTitle) as { cli_tool_use_id: string } | undefined;
+    if (sub) completeSubtaskFromCli(sub.cli_tool_use_id);
+    accum.buf = accum.buf.slice(accum.buf.indexOf(doneMatch[0]) + doneMatch[0].length);
+  }
+
+  // Prevent unbounded growth: keep only last 2KB
+  if (accum.buf.length > 2048) {
+    accum.buf = accum.buf.slice(-1024);
+  }
+}
+
 // Parse OpenAI-compatible SSE stream (for Copilot)
 async function parseSSEStream(
   body: ReadableStream<Uint8Array>,
@@ -920,6 +1196,7 @@ async function parseSSEStream(
 ): Promise<void> {
   const decoder = new TextDecoder();
   let buffer = "";
+  const subtaskAccum = { buf: "" };
 
   const processLine = (trimmed: string) => {
     if (!trimmed || trimmed.startsWith(":")) return;
@@ -930,7 +1207,10 @@ async function parseSSEStream(
       const delta = data.choices?.[0]?.delta;
       if (delta?.content) {
         logStream.write(delta.content);
-        if (taskId) broadcast("cli_output", { task_id: taskId, stream: "stdout", data: delta.content });
+        if (taskId) {
+          broadcast("cli_output", { task_id: taskId, stream: "stdout", data: delta.content });
+          parseHttpAgentSubtasks(taskId, delta.content, subtaskAccum);
+        }
       }
     } catch { /* ignore */ }
   };
@@ -954,6 +1234,7 @@ async function parseGeminiSSEStream(
 ): Promise<void> {
   const decoder = new TextDecoder();
   let buffer = "";
+  const subtaskAccum = { buf: "" };
 
   const processLine = (trimmed: string) => {
     if (!trimmed || trimmed.startsWith(":")) return;
@@ -968,7 +1249,10 @@ async function parseGeminiSSEStream(
             for (const part of parts) {
               if (part.text) {
                 logStream.write(part.text);
-                if (taskId) broadcast("cli_output", { task_id: taskId, stream: "stdout", data: part.text });
+                if (taskId) {
+                  broadcast("cli_output", { task_id: taskId, stream: "stdout", data: part.text });
+                  parseHttpAgentSubtasks(taskId, part.text, subtaskAccum);
+                }
               }
             }
           }
@@ -1150,14 +1434,30 @@ function launchHttpAgent(
 }
 
 function killPidTree(pid: number): void {
+  if (pid <= 0) return;
+
   if (process.platform === "win32") {
+    // Use synchronous taskkill so stop/delete reflects real termination attempt.
     try {
-      execFile("taskkill", ["/pid", String(pid), "/T", "/F"], { timeout: 5000 }, () => {});
+      execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", timeout: 8000 });
     } catch { /* ignore */ }
-  } else {
-    try { process.kill(-pid, "SIGTERM"); } catch { /* ignore */ }
-    try { process.kill(pid, "SIGTERM"); } catch { /* ignore */ }
+    return;
   }
+
+  const signalTree = (sig: NodeJS.Signals) => {
+    try { process.kill(-pid, sig); } catch { /* ignore */ }
+    try { process.kill(pid, sig); } catch { /* ignore */ }
+  };
+  const isAlive = () => {
+    try { process.kill(pid, 0); return true; } catch { return false; }
+  };
+
+  // 1) Graceful stop first
+  signalTree("SIGTERM");
+  // 2) Escalate if process ignores SIGTERM
+  setTimeout(() => {
+    if (isAlive()) signalTree("SIGKILL");
+  }, 1200);
 }
 
 // ---------------------------------------------------------------------------
@@ -1619,6 +1919,17 @@ const progressTimers = new Map<string, ReturnType<typeof setInterval>>();
 // Key: cross-dept task ID → callback to start next department
 const crossDeptNextCallbacks = new Map<string, () => void>();
 
+// Subtask delegation sequential queue: delegated task ID → callback to start next delegation
+const subtaskDelegationCallbacks = new Map<string, () => void>();
+
+// Map delegated task ID → original subtask ID for completion tracking
+const delegatedTaskToSubtask = new Map<string, string>();
+
+// Review consensus workflow state: task_id → current review round
+const reviewRoundState = new Map<string, number>();
+const reviewInFlight = new Set<string>();
+const meetingPresenceUntil = new Map<string, number>();
+
 function startProgressTimer(taskId: string, taskTitle: string, departmentId: string | null): void {
   // Send progress report every 5min for long-running tasks
   const timer = setInterval(() => {
@@ -1671,6 +1982,375 @@ function notifyCeo(content: string, taskId: string | null = null, messageType: s
   });
 }
 
+function getLeadersByDepartmentIds(deptIds: string[]): AgentRow[] {
+  const out: AgentRow[] = [];
+  const seen = new Set<string>();
+  for (const deptId of deptIds) {
+    if (!deptId) continue;
+    const leader = findTeamLeader(deptId);
+    if (!leader || seen.has(leader.id)) continue;
+    out.push(leader);
+    seen.add(leader.id);
+  }
+  return out;
+}
+
+function getAllActiveTeamLeaders(): AgentRow[] {
+  return db.prepare(`
+    SELECT a.*
+    FROM agents a
+    LEFT JOIN departments d ON a.department_id = d.id
+    WHERE a.role = 'team_leader' AND a.status != 'offline'
+    ORDER BY d.sort_order ASC, a.name ASC
+  `).all() as AgentRow[];
+}
+
+function getTaskRelatedDepartmentIds(taskId: string, fallbackDeptId: string | null): string[] {
+  const task = db.prepare(
+    "SELECT title, description, department_id FROM tasks WHERE id = ?"
+  ).get(taskId) as { title: string; description: string | null; department_id: string | null } | undefined;
+
+  const deptSet = new Set<string>();
+  if (fallbackDeptId) deptSet.add(fallbackDeptId);
+  if (task?.department_id) deptSet.add(task.department_id);
+
+  const subtaskDepts = db.prepare(
+    "SELECT DISTINCT target_department_id FROM subtasks WHERE task_id = ? AND target_department_id IS NOT NULL"
+  ).all(taskId) as Array<{ target_department_id: string | null }>;
+  for (const row of subtaskDepts) {
+    if (row.target_department_id) deptSet.add(row.target_department_id);
+  }
+
+  const sourceText = `${task?.title ?? ""} ${task?.description ?? ""}`;
+  for (const deptId of detectTargetDepartments(sourceText)) {
+    deptSet.add(deptId);
+  }
+
+  return [...deptSet];
+}
+
+function getTaskReviewLeaders(
+  taskId: string,
+  fallbackDeptId: string | null,
+  opts?: { minLeaders?: number; includePlanning?: boolean; fallbackAll?: boolean },
+): AgentRow[] {
+  const deptIds = getTaskRelatedDepartmentIds(taskId, fallbackDeptId);
+  const leaders = getLeadersByDepartmentIds(deptIds);
+  const includePlanning = opts?.includePlanning ?? true;
+  const minLeaders = opts?.minLeaders ?? 2;
+  const fallbackAll = opts?.fallbackAll ?? true;
+
+  const seen = new Set(leaders.map((l) => l.id));
+  if (includePlanning) {
+    const planningLeader = findTeamLeader("planning");
+    if (planningLeader && !seen.has(planningLeader.id)) {
+      leaders.unshift(planningLeader);
+      seen.add(planningLeader.id);
+    }
+  }
+
+  // If related departments are not detectable, expand to all team leaders
+  // so approval is based on real multi-party communication.
+  if (fallbackAll && leaders.length < minLeaders) {
+    for (const leader of getAllActiveTeamLeaders()) {
+      if (seen.has(leader.id)) continue;
+      leaders.push(leader);
+      seen.add(leader.id);
+    }
+  }
+
+  return leaders;
+}
+
+function markAgentInMeeting(agentId: string, holdMs = 90_000): void {
+  meetingPresenceUntil.set(agentId, nowMs() + holdMs);
+  const row = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId) as AgentRow | undefined;
+  if (row?.status === "break") {
+    db.prepare("UPDATE agents SET status = 'idle' WHERE id = ?").run(agentId);
+    const updated = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId);
+    broadcast("agent_status", updated);
+  }
+}
+
+function isAgentInMeeting(agentId: string): boolean {
+  const until = meetingPresenceUntil.get(agentId);
+  if (!until) return false;
+  if (until < nowMs()) {
+    meetingPresenceUntil.delete(agentId);
+    return false;
+  }
+  return true;
+}
+
+function callLeadersToCeoOffice(taskId: string, leaders: AgentRow[], phase: "kickoff" | "review"): void {
+  leaders.slice(0, 6).forEach((leader, seatIndex) => {
+    markAgentInMeeting(leader.id);
+    broadcast("ceo_office_call", {
+      from_agent_id: leader.id,
+      seat_index: seatIndex,
+      phase,
+      task_id: taskId,
+    });
+  });
+}
+
+function startReviewConsensusMeeting(
+  taskId: string,
+  taskTitle: string,
+  departmentId: string | null,
+  onApproved: () => void,
+): void {
+  if (reviewInFlight.has(taskId)) return;
+  reviewInFlight.add(taskId);
+
+  const leaders = getTaskReviewLeaders(taskId, departmentId);
+  if (leaders.length === 0) {
+    reviewInFlight.delete(taskId);
+    onApproved();
+    return;
+  }
+
+  const round = (reviewRoundState.get(taskId) ?? 0) + 1;
+  reviewRoundState.set(taskId, round);
+
+  const planningLeader = leaders.find((l) => l.department_id === "planning") ?? leaders[0];
+  const otherLeaders = leaders.filter((l) => l.id !== planningLeader.id);
+  const needsRevision = leaders.length > 1 && round === 1;
+  const reviseOwner = needsRevision ? (otherLeaders[0] ?? planningLeader) : null;
+
+  callLeadersToCeoOffice(taskId, leaders, "review");
+  notifyCeo(`[CEO OFFICE] '${taskTitle}' 리뷰 라운드 ${round} 시작. 팀장 의견 수집 및 상호 승인 진행합니다.`, taskId);
+
+  sendAgentMessage(
+    planningLeader,
+    `CEO OFFICE 회의 시작합니다. '${taskTitle}' 관련 이슈/아이디어를 순서대로 공유해주세요. 의견 취합 후 최종안으로 승인 요청드리겠습니다.`,
+    "chat",
+    "all",
+    null,
+    taskId,
+  );
+
+  let delay = 900;
+  for (const leader of otherLeaders) {
+    const leaderName = leader.name_ko || leader.name;
+    const deptName = getDeptName(leader.department_id ?? "");
+    const feedback = reviseOwner?.id === leader.id
+      ? `${deptName} ${leaderName}: 현재 결과물에서 보완이 필요한 이슈 1건 확인했습니다. 수정안 반영 후 승인하겠습니다.`
+      : `${deptName} ${leaderName}: 검토 의견 공유드립니다. 리스크는 낮고, 현재안 기반으로 진행 가능해 보입니다.`;
+    setTimeout(() => {
+      sendAgentMessage(leader, feedback, "chat", "agent", planningLeader.id, taskId);
+    }, delay);
+    delay += 850;
+  }
+
+  if (otherLeaders.length === 0) {
+    setTimeout(() => {
+      sendAgentMessage(
+        planningLeader,
+        "단독 검토 결과 공유드립니다. 주요 산출물/의존성/리스크 모두 점검 완료했습니다.",
+        "chat",
+        "all",
+        null,
+        taskId,
+      );
+    }, delay);
+    delay += 700;
+  }
+
+  setTimeout(() => {
+    const summary = needsRevision
+      ? `기획팀 취합 의견: 공통 과제는 유지하되, 지적된 보완 항목을 반영한 수정안으로 재검토하겠습니다.`
+      : `기획팀 취합 의견: 각 부서 의견을 반영한 최종안 확정 가능 상태입니다. 전원 최종 동의(Approved) 부탁드립니다.`;
+    sendAgentMessage(planningLeader, summary, "report", "all", null, taskId);
+  }, delay);
+  delay += 900;
+
+  leaders.forEach((leader, idx) => {
+    const approved = !needsRevision;
+    const leaderName = leader.name_ko || leader.name;
+    const approvalMsg = approved
+      ? `${leaderName}: 최종안 확인 완료, Approved 합니다.`
+      : (reviseOwner?.id === leader.id
+        ? `${leaderName}: 현재안은 Approved 보류합니다. 보완안 반영 후 승인하겠습니다.`
+        : `${leaderName}: 보완안 반영 조건으로 동의합니다. 최종 Approved는 다음 라운드에서 진행하겠습니다.`);
+    setTimeout(() => {
+      sendAgentMessage(leader, approvalMsg, "status_update", "all", null, taskId);
+    }, delay + idx * 500);
+  });
+  delay += leaders.length * 500 + 600;
+
+  setTimeout(() => {
+    if (needsRevision) {
+      appendTaskLog(taskId, "system", `Review consensus round ${round}: revision requested`);
+      notifyCeo(`[CEO OFFICE] '${taskTitle}' 승인 보류. 기획팀이 보완안 반영 후 재승인 라운드를 시작합니다.`, taskId);
+
+      const now = nowMs();
+      db.prepare("UPDATE tasks SET status = 'in_progress', updated_at = ? WHERE id = ?").run(now, taskId);
+      broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
+
+      setTimeout(() => {
+        const t2 = nowMs();
+        db.prepare("UPDATE tasks SET status = 'review', updated_at = ? WHERE id = ?").run(t2, taskId);
+        appendTaskLog(taskId, "system", `Review consensus round ${round}: revision reflected, back to review`);
+        broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
+        notifyCeo(`[CEO OFFICE] '${taskTitle}' 보완안 반영 완료. 재검토 및 재승인 라운드를 시작합니다.`, taskId);
+        reviewInFlight.delete(taskId);
+        finishReview(taskId, taskTitle);
+      }, 2600);
+      return;
+    }
+
+    appendTaskLog(taskId, "system", `Review consensus round ${round}: all leaders approved`);
+    notifyCeo(`[CEO OFFICE] '${taskTitle}' 전원 Approved 완료. Done 단계로 진행합니다.`, taskId);
+    reviewInFlight.delete(taskId);
+    onApproved();
+  }, delay);
+}
+
+function startTaskExecutionForAgent(
+  taskId: string,
+  execAgent: AgentRow,
+  deptId: string | null,
+  deptName: string,
+): void {
+  const execName = execAgent.name_ko || execAgent.name;
+  const t = nowMs();
+  db.prepare(
+    "UPDATE tasks SET status = 'in_progress', assigned_agent_id = ?, started_at = ?, updated_at = ? WHERE id = ?"
+  ).run(execAgent.id, t, t, taskId);
+  db.prepare("UPDATE agents SET status = 'working', current_task_id = ? WHERE id = ?").run(taskId, execAgent.id);
+  appendTaskLog(taskId, "system", `${execName} started (approved)`);
+
+  broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
+  broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(execAgent.id));
+
+  const provider = execAgent.cli_provider || "claude";
+  if (!["claude", "codex", "gemini", "opencode"].includes(provider)) return;
+
+  const taskData = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as {
+    title: string;
+    description: string | null;
+    project_path: string | null;
+  } | undefined;
+  if (!taskData) return;
+
+  const projPath = resolveProjectPath(taskData);
+  const logFilePath = path.join(logsDir, `${taskId}.log`);
+  const roleLabel = { team_leader: "Team Leader", senior: "Senior", junior: "Junior", intern: "Intern" }[execAgent.role] || execAgent.role;
+  const deptConstraint = deptId ? getDeptRoleConstraint(deptId, deptName) : "";
+  const conversationCtx = getRecentConversationContext(execAgent.id);
+  const spawnPrompt = [
+    `[Task] ${taskData.title}`,
+    taskData.description ? `\n${taskData.description}` : "",
+    conversationCtx,
+    `\n---`,
+    `Agent: ${execAgent.name} (${roleLabel}, ${deptName})`,
+    execAgent.personality ? `Personality: ${execAgent.personality}` : "",
+    deptConstraint,
+    `Please complete the task above thoroughly. Use the conversation context above if relevant.`,
+  ].filter(Boolean).join("\n");
+
+  appendTaskLog(taskId, "system", `RUN start (agent=${execAgent.name}, provider=${provider})`);
+  const modelConfig = getProviderModelConfig();
+  const modelForProvider = modelConfig[provider]?.model || undefined;
+  const reasoningLevel = modelConfig[provider]?.reasoningLevel || undefined;
+  const child = spawnCliAgent(taskId, provider, spawnPrompt, projPath, logFilePath, modelForProvider, reasoningLevel);
+  child.on("close", (code) => {
+    handleTaskRunComplete(taskId, code ?? 1);
+  });
+
+  notifyCeo(`${execName}가 '${taskData.title}' 작업을 시작했습니다.`, taskId);
+  startProgressTimer(taskId, taskData.title, deptId);
+}
+
+function startPlannedApprovalMeeting(
+  taskId: string,
+  taskTitle: string,
+  departmentId: string | null,
+  onApproved: () => void,
+): void {
+  if (reviewInFlight.has(`planned:${taskId}`)) return;
+  reviewInFlight.add(`planned:${taskId}`);
+
+  const leaders = getTaskReviewLeaders(taskId, departmentId);
+  if (leaders.length === 0) {
+    reviewInFlight.delete(`planned:${taskId}`);
+    onApproved();
+    return;
+  }
+
+  const round = (reviewRoundState.get(`planned:${taskId}`) ?? 0) + 1;
+  reviewRoundState.set(`planned:${taskId}`, round);
+
+  const planningLeader = leaders.find((l) => l.department_id === "planning") ?? leaders[0];
+  const otherLeaders = leaders.filter((l) => l.id !== planningLeader.id);
+  const needsRevision = leaders.length > 1 && round === 1;
+  const reviseOwner = needsRevision ? (otherLeaders[0] ?? planningLeader) : null;
+
+  callLeadersToCeoOffice(taskId, leaders, "kickoff");
+  notifyCeo(`[CEO OFFICE] '${taskTitle}' Planned 승인 라운드 ${round} 시작. 부서별 의견 수집 후 전원 Approved 확인합니다.`, taskId);
+
+  sendAgentMessage(
+    planningLeader,
+    `기획팀장입니다. '${taskTitle}' 착수 전 의견을 순서대로 공유해주세요. 제가 취합 후 최종안으로 승인 요청하겠습니다.`,
+    "chat",
+    "all",
+    null,
+    taskId,
+  );
+
+  let delay = 900;
+  for (const leader of otherLeaders) {
+    const deptName = getDeptName(leader.department_id ?? "");
+    const leaderName = leader.name_ko || leader.name;
+    const feedback = reviseOwner?.id === leader.id
+      ? `${deptName} ${leaderName}: 착수 전 보완 필요사항 1건 있습니다. 해당 항목 보완 후 Approved 가능합니다.`
+      : `${deptName} ${leaderName}: 의견 공유드립니다. 현재 계획으로 착수 가능하며 의존성 리스크 낮습니다.`;
+    setTimeout(() => {
+      sendAgentMessage(leader, feedback, "chat", "agent", planningLeader.id, taskId);
+    }, delay);
+    delay += 820;
+  }
+
+  setTimeout(() => {
+    const summary = needsRevision
+      ? `기획팀장 취합 의견: 제기된 보완사항 반영 후 같은 테이블에서 재승인 받겠습니다.`
+      : `기획팀장 취합 의견: 부서 의견 반영한 최종 착수안 확정입니다. 전원 Approved 부탁드립니다.`;
+    sendAgentMessage(planningLeader, summary, "report", "all", null, taskId);
+  }, delay);
+  delay += 900;
+
+  leaders.forEach((leader, idx) => {
+    const approved = !needsRevision;
+    const leaderName = leader.name_ko || leader.name;
+    const approval = approved
+      ? `${leaderName}: Planned 단계 최종안 Approved 합니다.`
+      : (reviseOwner?.id === leader.id
+        ? `${leaderName}: 보완안 확인 전까지 Approved 보류합니다.`
+        : `${leaderName}: 보완 반영 조건으로 동의합니다.`);
+    setTimeout(() => {
+      sendAgentMessage(leader, approval, "status_update", "all", null, taskId);
+    }, delay + idx * 480);
+  });
+  delay += leaders.length * 480 + 600;
+
+  setTimeout(() => {
+    if (needsRevision) {
+      appendTaskLog(taskId, "system", `Planned approval round ${round}: revision requested`);
+      notifyCeo(`[CEO OFFICE] '${taskTitle}' Planned 승인 보류. 보완안 반영 후 재승인 라운드를 진행합니다.`, taskId);
+      reviewInFlight.delete(`planned:${taskId}`);
+      setTimeout(() => startPlannedApprovalMeeting(taskId, taskTitle, departmentId, onApproved), 2200);
+      return;
+    }
+
+    appendTaskLog(taskId, "system", `Planned approval round ${round}: all leaders approved`);
+    notifyCeo(`[CEO OFFICE] '${taskTitle}' Planned 단계 전원 Approved 완료. In Progress로 전환합니다.`, taskId);
+    reviewRoundState.delete(`planned:${taskId}`);
+    reviewInFlight.delete(`planned:${taskId}`);
+    onApproved();
+  }, delay);
+}
+
 // ---------------------------------------------------------------------------
 // Run completion handler — enhanced with review flow + CEO reporting
 // ---------------------------------------------------------------------------
@@ -1678,17 +2358,44 @@ function handleTaskRunComplete(taskId: string, exitCode: number): void {
   activeProcesses.delete(taskId);
   stopProgressTimer(taskId);
 
-  const t = nowMs();
-  const logKind = exitCode === 0 ? "completed" : "failed";
-
-  appendTaskLog(taskId, "system", `RUN ${logKind} (exit code: ${exitCode})`);
-
-  // Get task info
+  // Get latest task snapshot early for stop/delete race handling.
   const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as {
     assigned_agent_id: string | null;
     department_id: string | null;
     title: string;
+    status: string;
   } | undefined;
+  const stopRequested = stopRequestedTasks.has(taskId);
+  stopRequestedTasks.delete(taskId);
+
+  // If task was stopped/deleted or no longer in-progress, ignore late close events.
+  if (!task || stopRequested || task.status !== "in_progress") {
+    if (task) {
+      appendTaskLog(
+        taskId,
+        "system",
+        `RUN completion ignored (status=${task.status}, exit=${exitCode}, stop_requested=${stopRequested ? "yes" : "no"})`,
+      );
+    }
+    crossDeptNextCallbacks.delete(taskId);
+    subtaskDelegationCallbacks.delete(taskId);
+    reviewInFlight.delete(taskId);
+    reviewInFlight.delete(`planned:${taskId}`);
+    reviewRoundState.delete(taskId);
+    reviewRoundState.delete(`planned:${taskId}`);
+    return;
+  }
+
+  // Clean up Codex thread→subtask mappings for this task's subtasks
+  for (const [tid, itemId] of codexThreadToSubtask) {
+    const row = db.prepare("SELECT id FROM subtasks WHERE cli_tool_use_id = ? AND task_id = ?").get(itemId, taskId);
+    if (row) codexThreadToSubtask.delete(tid);
+  }
+
+  const t = nowMs();
+  const logKind = exitCode === 0 ? "completed" : "failed";
+
+  appendTaskLog(taskId, "system", `RUN ${logKind} (exit code: ${exitCode})`);
 
   // Read log file for result
   const logPath = path.join(logsDir, `${taskId}.log`);
@@ -1704,21 +2411,26 @@ function handleTaskRunComplete(taskId: string, exitCode: number): void {
     db.prepare("UPDATE tasks SET result = ? WHERE id = ?").run(result, taskId);
   }
 
-  // Auto-complete remaining subtasks on CLI success
+  // Auto-complete own-department subtasks on CLI success; foreign ones get delegated
   if (exitCode === 0) {
     const pendingSubtasks = db.prepare(
-      "SELECT id FROM subtasks WHERE task_id = ? AND status != 'done'"
-    ).all(taskId) as Array<{ id: string }>;
+      "SELECT id, target_department_id FROM subtasks WHERE task_id = ? AND status != 'done'"
+    ).all(taskId) as Array<{ id: string; target_department_id: string | null }>;
     if (pendingSubtasks.length > 0) {
       const now = nowMs();
       for (const sub of pendingSubtasks) {
-        db.prepare(
-          "UPDATE subtasks SET status = 'done', completed_at = ? WHERE id = ?"
-        ).run(now, sub.id);
-        const updated = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sub.id);
-        broadcast("subtask_update", updated);
+        // Only auto-complete subtasks without a foreign department target
+        if (!sub.target_department_id) {
+          db.prepare(
+            "UPDATE subtasks SET status = 'done', completed_at = ? WHERE id = ?"
+          ).run(now, sub.id);
+          const updated = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sub.id);
+          broadcast("subtask_update", updated);
+        }
       }
     }
+    // Trigger delegation for foreign-department subtasks
+    processSubtaskDelegations(taskId);
   }
 
   // Update agent status back to idle
@@ -1865,69 +2577,94 @@ function handleTaskRunComplete(taskId: string, exitCode: number): void {
       crossDeptNextCallbacks.delete(taskId);
       setTimeout(nextCallback, 3000);
     }
+
+    // Even on failure, trigger next subtask delegation so the queue doesn't stall
+    const subtaskNext = subtaskDelegationCallbacks.get(taskId);
+    if (subtaskNext) {
+      subtaskDelegationCallbacks.delete(taskId);
+      setTimeout(subtaskNext, 3000);
+    }
   }
 }
 
 // Move a reviewed task to 'done'
 function finishReview(taskId: string, taskTitle: string): void {
-  const t = nowMs();
   const currentTask = db.prepare("SELECT status, department_id FROM tasks WHERE id = ?").get(taskId) as { status: string; department_id: string | null } | undefined;
   if (!currentTask || currentTask.status !== "review") return; // Already moved or cancelled
 
-  // If task has a worktree, merge the branch back before marking done
-  const wtInfo = taskWorktrees.get(taskId);
-  let mergeNote = "";
-  if (wtInfo) {
-    const mergeResult = mergeWorktree(wtInfo.projectPath, taskId);
+  const remainingSubtasks = db.prepare(
+    "SELECT COUNT(*) as cnt FROM subtasks WHERE task_id = ? AND status != 'done'"
+  ).get(taskId) as { cnt: number };
+  if (remainingSubtasks.cnt > 0) {
+    notifyCeo(`'${taskTitle}' 는 아직 ${remainingSubtasks.cnt}개 서브태스크가 남아 있어 Review 단계에서 대기합니다.`, taskId);
+    appendTaskLog(taskId, "system", `Review hold: waiting for ${remainingSubtasks.cnt} unfinished subtasks`);
+    return;
+  }
 
-    if (mergeResult.success) {
-      appendTaskLog(taskId, "system", `Git merge 완료: ${mergeResult.message}`);
-      cleanupWorktree(wtInfo.projectPath, taskId);
-      appendTaskLog(taskId, "system", "Worktree cleaned up after successful merge");
-      mergeNote = " (병합 완료)";
-    } else {
-      // Merge conflict or failure — report to CEO, keep worktree for manual resolution
-      appendTaskLog(taskId, "system", `Git merge 실패: ${mergeResult.message}`);
+  startReviewConsensusMeeting(taskId, taskTitle, currentTask.department_id, () => {
+    const t = nowMs();
+    const latestTask = db.prepare("SELECT status, department_id FROM tasks WHERE id = ?").get(taskId) as { status: string; department_id: string | null } | undefined;
+    if (!latestTask || latestTask.status !== "review") return;
 
-      const conflictLeader = findTeamLeader(currentTask.department_id);
-      const conflictLeaderName = conflictLeader?.name_ko || conflictLeader?.name || "팀장";
-      const conflictFiles = mergeResult.conflicts?.length
-        ? `\n충돌 파일: ${mergeResult.conflicts.join(", ")}`
-        : "";
-      notifyCeo(
-        `${conflictLeaderName}: '${taskTitle}' 병합 중 충돌이 발생했습니다. 수동 해결이 필요합니다.${conflictFiles}\n` +
-        `브랜치: ${wtInfo.branchName}`,
-        taskId,
-      );
+    // If task has a worktree, merge the branch back before marking done
+    const wtInfo = taskWorktrees.get(taskId);
+    let mergeNote = "";
+    if (wtInfo) {
+      const mergeResult = mergeWorktree(wtInfo.projectPath, taskId);
 
-      mergeNote = " (병합 충돌 - 수동 해결 필요)";
-      // Don't clean up worktree — keep it for manual conflict resolution
-      // Still move task to done since the work itself is approved
+      if (mergeResult.success) {
+        appendTaskLog(taskId, "system", `Git merge 완료: ${mergeResult.message}`);
+        cleanupWorktree(wtInfo.projectPath, taskId);
+        appendTaskLog(taskId, "system", "Worktree cleaned up after successful merge");
+        mergeNote = " (병합 완료)";
+      } else {
+        appendTaskLog(taskId, "system", `Git merge 실패: ${mergeResult.message}`);
+
+        const conflictLeader = findTeamLeader(latestTask.department_id);
+        const conflictLeaderName = conflictLeader?.name_ko || conflictLeader?.name || "팀장";
+        const conflictFiles = mergeResult.conflicts?.length
+          ? `\n충돌 파일: ${mergeResult.conflicts.join(", ")}`
+          : "";
+        notifyCeo(
+          `${conflictLeaderName}: '${taskTitle}' 병합 중 충돌이 발생했습니다. 수동 해결이 필요합니다.${conflictFiles}\n` +
+          `브랜치: ${wtInfo.branchName}`,
+          taskId,
+        );
+
+        mergeNote = " (병합 충돌 - 수동 해결 필요)";
+      }
     }
-  }
 
-  db.prepare(
-    "UPDATE tasks SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ?"
-  ).run(t, t, taskId);
+    db.prepare(
+      "UPDATE tasks SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ?"
+    ).run(t, t, taskId);
 
-  appendTaskLog(taskId, "system", "Status → done (team leader approved)");
+    appendTaskLog(taskId, "system", "Status → done (all leaders approved)");
 
-  const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId);
-  broadcast("task_update", updatedTask);
+    const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId);
+    broadcast("task_update", updatedTask);
 
-  // Refresh CLI usage data in background after task completion
-  refreshCliUsageData().then((usage) => broadcast("cli_usage_update", usage)).catch(() => {});
+    refreshCliUsageData().then((usage) => broadcast("cli_usage_update", usage)).catch(() => {});
 
-  const leader = findTeamLeader(currentTask.department_id);
-  const leaderName = leader?.name_ko || leader?.name || "팀장";
-  notifyCeo(`${leaderName}: '${taskTitle}' 완료 보고드립니다.${mergeNote}`, taskId);
+    const leader = findTeamLeader(latestTask.department_id);
+    const leaderName = leader?.name_ko || leader?.name || "팀장";
+    notifyCeo(`${leaderName}: '${taskTitle}' 최종 승인 완료 보고드립니다.${mergeNote}`, taskId);
 
-  // Trigger next cross-dept cooperation if queued (sequential chain)
-  const nextCallback = crossDeptNextCallbacks.get(taskId);
-  if (nextCallback) {
-    crossDeptNextCallbacks.delete(taskId);
-    nextCallback();
-  }
+    reviewRoundState.delete(taskId);
+    reviewInFlight.delete(taskId);
+
+    const nextCallback = crossDeptNextCallbacks.get(taskId);
+    if (nextCallback) {
+      crossDeptNextCallbacks.delete(taskId);
+      nextCallback();
+    }
+
+    const subtaskNext = subtaskDelegationCallbacks.get(taskId);
+    if (subtaskNext) {
+      subtaskDelegationCallbacks.delete(taskId);
+      subtaskNext();
+    }
+  });
 }
 
 // ===========================================================================
@@ -2072,6 +2809,10 @@ app.post("/api/agents/:id/spawn", (req, res) => {
 
   appendTaskLog(taskId, "system", `RUN start (agent=${agent.name}, provider=${provider})`);
 
+  const spawnModelConfig = getProviderModelConfig();
+  const spawnModel = spawnModelConfig[provider]?.model || undefined;
+  const spawnReasoningLevel = spawnModelConfig[provider]?.reasoningLevel || undefined;
+
   if (provider === "copilot" || provider === "antigravity") {
     const controller = new AbortController();
     const fakePid = -(++httpAgentCounter);
@@ -2086,7 +2827,7 @@ app.post("/api/agents/:id/spawn", (req, res) => {
     return res.json({ ok: true, pid: fakePid, logPath, cwd: projectPath });
   }
 
-  const child = spawnCliAgent(taskId, provider, prompt, projectPath, logPath);
+  const child = spawnCliAgent(taskId, provider, prompt, projectPath, logPath, spawnModel, spawnReasoningLevel);
 
   child.on("close", (code) => {
     handleTaskRunComplete(taskId, code ?? 1);
@@ -2260,6 +3001,7 @@ app.delete("/api/tasks/:id", (req, res) => {
   // Kill any running process
   const activeChild = activeProcesses.get(id);
   if (activeChild?.pid) {
+    stopRequestedTasks.add(id);
     if (activeChild.pid < 0) {
       activeChild.kill();
     } else {
@@ -2327,6 +3069,18 @@ app.post("/api/tasks/:id/subtasks", (req, res) => {
     VALUES (?, ?, ?, ?, 'pending', ?, ?)
   `).run(id, taskId, body.title, body.description ?? null, body.assigned_agent_id ?? null, nowMs());
 
+  // Detect foreign department for manual subtask creation too
+  const parentTaskDept = db.prepare(
+    "SELECT department_id FROM tasks WHERE id = ?"
+  ).get(taskId) as { department_id: string | null } | undefined;
+  const targetDeptId = analyzeSubtaskDepartment(body.title, parentTaskDept?.department_id ?? null);
+  if (targetDeptId) {
+    const targetDeptName = getDeptName(targetDeptId);
+    db.prepare(
+      "UPDATE subtasks SET target_department_id = ?, status = 'blocked', blocked_reason = ? WHERE id = ?"
+    ).run(targetDeptId, `${targetDeptName} 협업 대기`, id);
+  }
+
   const subtask = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(id);
   broadcast("subtask_update", subtask);
   res.json(subtask);
@@ -2339,7 +3093,7 @@ app.patch("/api/subtasks/:id", (req, res) => {
   if (!existing) return res.status(404).json({ error: "not_found" });
 
   const body = req.body ?? {};
-  const allowedFields = ["title", "description", "status", "assigned_agent_id", "blocked_reason"];
+  const allowedFields = ["title", "description", "status", "assigned_agent_id", "blocked_reason", "target_department_id", "delegated_task_id"];
   const updates: string[] = [];
   const params: unknown[] = [];
 
@@ -2514,6 +3268,33 @@ app.post("/api/tasks/:id/run", (req, res) => {
   const roleLabel = { team_leader: "Team Leader", senior: "Senior", junior: "Junior", intern: "Intern" }[agent.role] || agent.role;
   const deptConstraint = agent.department_id ? getDeptRoleConstraint(agent.department_id, agent.department_name || agent.department_id) : "";
   const conversationCtx = getRecentConversationContext(agentId);
+  // Non-CLI or non-multi-agent providers: instruct agent to output subtask plan as JSON
+  const needsPlanInstruction = provider === "gemini" || provider === "copilot" || provider === "antigravity";
+  const subtaskInstruction = needsPlanInstruction ? `
+
+[작업 계획 출력 규칙]
+작업을 시작하기 전에 아래 JSON 형식으로 계획을 출력하세요:
+\`\`\`json
+{"subtasks": [{"title": "서브태스크 제목1"}, {"title": "서브태스크 제목2"}]}
+\`\`\`
+각 서브태스크를 완료할 때마다 아래 형식으로 보고하세요:
+\`\`\`json
+{"subtask_done": "완료된 서브태스크 제목"}
+\`\`\`
+` : "";
+
+  // Resolve model config for this provider
+  const modelConfig = getProviderModelConfig();
+  const mainModel = modelConfig[provider]?.model || undefined;
+  const subModel = modelConfig[provider]?.subModel || undefined;
+  const mainReasoningLevel = modelConfig[provider]?.reasoningLevel || undefined;
+
+  // Sub-agent model hint (best-effort via prompt for claude/codex)
+  const subReasoningLevel = modelConfig[provider]?.subModelReasoningLevel || undefined;
+  const subModelHint = subModel && (provider === "claude" || provider === "codex")
+    ? `\n[Sub-agent model preference] When spawning sub-agents (Task tool), prefer using model: ${subModel}${subReasoningLevel ? ` with reasoning effort: ${subReasoningLevel}` : ""}`
+    : "";
+
   const prompt = [
     `[Task] ${task.title}`,
     task.description ? `\n${task.description}` : "",
@@ -2523,6 +3304,8 @@ app.post("/api/tasks/:id/run", (req, res) => {
     agent.personality ? `Personality: ${agent.personality}` : "",
     deptConstraint,
     worktreePath ? `NOTE: You are working in an isolated Git worktree branch (climpire/${id.slice(0, 8)}). Commit your changes normally.` : "",
+    subtaskInstruction,
+    subModelHint,
     `Please complete the task above thoroughly. Use the conversation context above if relevant.`,
   ].filter(Boolean).join("\n");
 
@@ -2554,7 +3337,7 @@ app.post("/api/tasks/:id/run", (req, res) => {
     return res.json({ ok: true, pid: fakePid, logPath, cwd: agentCwd, worktree: !!worktreePath });
   }
 
-  const child = spawnCliAgent(id, provider, prompt, agentCwd, logPath);
+  const child = spawnCliAgent(id, provider, prompt, agentCwd, logPath, mainModel, mainReasoningLevel);
 
   child.on("close", (code) => {
     handleTaskRunComplete(id, code ?? 1);
@@ -2606,16 +3389,29 @@ app.post("/api/tasks/:id/stop", (req, res) => {
   if (!activeChild?.pid) {
     // No active process; just update status
     db.prepare("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?").run(targetStatus, nowMs(), id);
+    const rolledBack = rollbackTaskWorktree(id, `stop_${targetStatus}_no_active_process`);
     if (task.assigned_agent_id) {
       db.prepare("UPDATE agents SET status = 'idle', current_task_id = NULL WHERE id = ?").run(task.assigned_agent_id);
     }
     const updatedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
     broadcast("task_update", updatedTask);
-    return res.json({ ok: true, stopped: false, status: targetStatus, message: "No active process found." });
+    if (targetStatus === "pending") {
+      notifyCeo(`'${task.title}' 작업이 보류 상태로 전환되었습니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`, id);
+    } else {
+      notifyCeo(`'${task.title}' 작업이 취소되었습니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`, id);
+    }
+    return res.json({
+      ok: true,
+      stopped: false,
+      status: targetStatus,
+      rolled_back: rolledBack,
+      message: "No active process found.",
+    });
   }
 
   // For HTTP agents (negative PID), call kill() which triggers AbortController
   // For CLI agents (positive PID), use OS-level process kill
+  stopRequestedTasks.add(id);
   if (activeChild.pid < 0) {
     activeChild.kill();
   } else {
@@ -2625,6 +3421,8 @@ app.post("/api/tasks/:id/stop", (req, res) => {
 
   const actionLabel = targetStatus === "pending" ? "PAUSE" : "STOP";
   appendTaskLog(id, "system", `${actionLabel} sent to pid ${activeChild.pid}`);
+
+  const rolledBack = rollbackTaskWorktree(id, `stop_${targetStatus}`);
 
   const t = nowMs();
   db.prepare("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?").run(targetStatus, t, id);
@@ -2640,12 +3438,12 @@ app.post("/api/tasks/:id/stop", (req, res) => {
 
   // CEO notification
   if (targetStatus === "pending") {
-    notifyCeo(`'${task.title}' 작업이 보류 상태로 전환되었습니다.`, id);
+    notifyCeo(`'${task.title}' 작업이 보류 상태로 전환되었습니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`, id);
   } else {
-    notifyCeo(`'${task.title}' 작업이 취소되었습니다.`, id);
+    notifyCeo(`'${task.title}' 작업이 취소되었습니다.${rolledBack ? " 코드 변경분은 git rollback 처리되었습니다." : ""}`, id);
   }
 
-  res.json({ ok: true, stopped: true, status: targetStatus, pid: activeChild.pid });
+  res.json({ ok: true, stopped: true, status: targetStatus, pid: activeChild.pid, rolled_back: rolledBack });
 });
 
 // Resume a pending or cancelled task → move back to planned (ready to re-run)
@@ -3292,6 +4090,287 @@ function getDeptRoleConstraint(deptId: string, deptName: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Subtask cross-department delegation: sequential per-subtask delegation
+// ---------------------------------------------------------------------------
+
+interface SubtaskRow {
+  id: string;
+  task_id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  target_department_id: string | null;
+  delegated_task_id: string | null;
+  blocked_reason: string | null;
+}
+
+/**
+ * Build a context-rich prompt for the delegated agent, showing full project context
+ * and all subtask statuses so the agent understands the bigger picture.
+ */
+function buildSubtaskDelegationPrompt(
+  parentTask: { id: string; title: string; description: string | null; project_path: string | null },
+  subtask: SubtaskRow,
+  execAgent: AgentRow,
+  targetDeptId: string,
+  targetDeptName: string,
+): string {
+  // Gather all sibling subtasks for context
+  const allSubtasks = db.prepare(
+    "SELECT id, title, status, target_department_id FROM subtasks WHERE task_id = ? ORDER BY created_at"
+  ).all(parentTask.id) as Array<{ id: string; title: string; status: string; target_department_id: string | null }>;
+
+  const statusIcon: Record<string, string> = {
+    done: "✅", in_progress: "🔨", pending: "⏳", blocked: "🔒",
+  };
+
+  const subtaskLines = allSubtasks.map(st => {
+    const icon = statusIcon[st.status] || "⏳";
+    const deptLabel = st.target_department_id ? getDeptName(st.target_department_id) : getDeptName(parentTask.description ? "" : "");
+    const parentDept = db.prepare("SELECT department_id FROM tasks WHERE id = ?").get(parentTask.id) as { department_id: string | null } | undefined;
+    const dept = st.target_department_id ? getDeptName(st.target_department_id) : getDeptName(parentDept?.department_id ?? "");
+    const marker = st.id === subtask.id ? " ← 당신의 담당" : "";
+    return `${icon} ${st.title} (${dept} - ${st.status})${marker}`;
+  }).join("\n");
+
+  const roleLabel = { team_leader: "Team Leader", senior: "Senior", junior: "Junior", intern: "Intern" }[execAgent.role] || execAgent.role;
+  const deptConstraint = getDeptRoleConstraint(targetDeptId, targetDeptName);
+  const conversationCtx = getRecentConversationContext(execAgent.id);
+
+  return [
+    `[프로젝트 협업 업무 - ${targetDeptName}]`,
+    ``,
+    `원본 업무: ${parentTask.title}`,
+    parentTask.description ? `CEO 요청: ${parentTask.description}` : "",
+    ``,
+    `[전체 서브태스크 현황]`,
+    subtaskLines,
+    ``,
+    `[${targetDeptName} 담당 업무]`,
+    `제목: ${subtask.title}`,
+    subtask.description ? `설명: ${subtask.description}` : "",
+    conversationCtx ? `\n${conversationCtx}` : "",
+    ``,
+    `---`,
+    `Agent: ${execAgent.name_ko || execAgent.name} (${roleLabel}, ${targetDeptName})`,
+    execAgent.personality ? `Personality: ${execAgent.personality}` : "",
+    deptConstraint,
+    ``,
+    `위 프로젝트의 전체 맥락을 파악한 뒤, 담당 업무만 수행해주세요.`,
+  ].filter(Boolean).join("\n");
+}
+
+/**
+ * Process all foreign-department subtasks after the main agent completes.
+ * Kicks off sequential delegation starting from index 0.
+ */
+function processSubtaskDelegations(taskId: string): void {
+  const foreignSubtasks = db.prepare(
+    "SELECT * FROM subtasks WHERE task_id = ? AND target_department_id IS NOT NULL AND delegated_task_id IS NULL ORDER BY created_at"
+  ).all(taskId) as SubtaskRow[];
+
+  if (foreignSubtasks.length === 0) return;
+
+  const parentTask = db.prepare(
+    "SELECT * FROM tasks WHERE id = ?"
+  ).get(taskId) as { id: string; title: string; description: string | null; project_path: string | null; department_id: string | null } | undefined;
+  if (!parentTask) return;
+
+  notifyCeo(`'${parentTask.title}' 의 외부 부서 서브태스크 ${foreignSubtasks.length}건을 순차 위임합니다.`, taskId);
+  delegateSubtaskSequential(foreignSubtasks, 0, parentTask);
+}
+
+/**
+ * Sequentially delegate one subtask at a time to foreign departments.
+ * When one finishes, the callback triggers the next.
+ */
+function delegateSubtaskSequential(
+  subtasks: SubtaskRow[],
+  index: number,
+  parentTask: { id: string; title: string; description: string | null; project_path: string | null; department_id: string | null },
+): void {
+  if (index >= subtasks.length) {
+    // All delegations complete — check if everything is done
+    const remaining = db.prepare(
+      "SELECT COUNT(*) as cnt FROM subtasks WHERE task_id = ? AND status != 'done'"
+    ).get(parentTask.id) as { cnt: number };
+    if (remaining.cnt === 0) {
+      notifyCeo(`'${parentTask.title}' 의 모든 서브태스크(부서간 협업 포함)가 완료되었습니다. ✅`, parentTask.id);
+    }
+    return;
+  }
+
+  const subtask = subtasks[index];
+  const targetDeptId = subtask.target_department_id!;
+  const targetDeptName = getDeptName(targetDeptId);
+
+  const crossLeader = findTeamLeader(targetDeptId);
+  if (!crossLeader) {
+    // No team leader — mark subtask as done with note and skip
+    db.prepare(
+      "UPDATE subtasks SET status = 'done', completed_at = ?, blocked_reason = NULL WHERE id = ?"
+    ).run(nowMs(), subtask.id);
+    const updated = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(subtask.id);
+    broadcast("subtask_update", updated);
+    delegateSubtaskSequential(subtasks, index + 1, parentTask);
+    return;
+  }
+
+  // Find the originator team leader for messaging
+  const originLeader = findTeamLeader(parentTask.department_id);
+  const originLeaderName = originLeader?.name_ko || originLeader?.name || "팀장";
+  const crossLeaderName = crossLeader.name_ko || crossLeader.name;
+
+  // Notify queue progress
+  if (subtasks.length > 1) {
+    notifyCeo(`서브태스크 위임 진행: ${targetDeptName} (${index + 1}/${subtasks.length})`, parentTask.id);
+  }
+
+  // Send cooperation request message
+  if (originLeader) {
+    sendAgentMessage(
+      originLeader,
+      `${crossLeaderName}님, '${parentTask.title}' 프로젝트의 서브태스크 "${subtask.title}" 협조 부탁드립니다! 🤝`,
+      "chat", "agent", crossLeader.id, parentTask.id,
+    );
+  }
+
+  // Broadcast delivery animation
+  broadcast("cross_dept_delivery", {
+    from_agent_id: originLeader?.id || null,
+    to_agent_id: crossLeader.id,
+    task_title: subtask.title,
+  });
+
+  // Delegate after short delay
+  const ackDelay = 1500 + Math.random() * 1000;
+  setTimeout(() => {
+    const crossSub = findBestSubordinate(targetDeptId, crossLeader.id);
+    const execAgent = crossSub || crossLeader;
+    const execName = execAgent.name_ko || execAgent.name;
+
+    // Acknowledge
+    sendAgentMessage(
+      crossLeader,
+      crossSub
+        ? `네, ${originLeaderName}님! "${subtask.title}" 건, ${execName}에게 배정하겠습니다 👍`
+        : `네, ${originLeaderName}님! "${subtask.title}" 건, 제가 직접 처리하겠습니다 👍`,
+      "chat", "agent", null, parentTask.id,
+    );
+
+    // Create delegated task
+    const delegatedTaskId = randomUUID();
+    const ct = nowMs();
+    const delegatedTitle = `[서브태스크 협업] ${subtask.title}`;
+    db.prepare(`
+      INSERT INTO tasks (id, title, description, department_id, status, priority, task_type, project_path, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'planned', 1, 'general', ?, ?, ?)
+    `).run(delegatedTaskId, delegatedTitle, `[서브태스크 위임 from ${getDeptName(parentTask.department_id ?? "")}] ${parentTask.description || parentTask.title}`, targetDeptId, parentTask.project_path, ct, ct);
+    appendTaskLog(delegatedTaskId, "system", `Subtask delegation from '${parentTask.title}' → ${targetDeptName}`);
+    broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(delegatedTaskId));
+
+    // Assign agent
+    const ct2 = nowMs();
+    db.prepare(
+      "UPDATE tasks SET assigned_agent_id = ?, status = 'in_progress', started_at = ?, updated_at = ? WHERE id = ?"
+    ).run(execAgent.id, ct2, ct2, delegatedTaskId);
+    db.prepare("UPDATE agents SET status = 'working', current_task_id = ? WHERE id = ?").run(delegatedTaskId, execAgent.id);
+    appendTaskLog(delegatedTaskId, "system", `${crossLeaderName} → ${execName}`);
+
+    broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(delegatedTaskId));
+    broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(execAgent.id));
+
+    // Link subtask to delegated task
+    db.prepare(
+      "UPDATE subtasks SET delegated_task_id = ?, status = 'in_progress', blocked_reason = NULL WHERE id = ?"
+    ).run(delegatedTaskId, subtask.id);
+    const updatedSub = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(subtask.id);
+    broadcast("subtask_update", updatedSub);
+
+    // Track mapping for completion handler
+    delegatedTaskToSubtask.set(delegatedTaskId, subtask.id);
+
+    // Register callback for next delegation in sequence
+    if (index + 1 < subtasks.length) {
+      subtaskDelegationCallbacks.set(delegatedTaskId, () => {
+        const nextDelay = 2000 + Math.random() * 1000;
+        setTimeout(() => {
+          delegateSubtaskSequential(subtasks, index + 1, parentTask);
+        }, nextDelay);
+      });
+    } else {
+      // Last one — register a final check callback
+      subtaskDelegationCallbacks.set(delegatedTaskId, () => {
+        delegateSubtaskSequential(subtasks, index + 1, parentTask);
+      });
+    }
+
+    // Build prompt and spawn CLI agent
+    const execProvider = execAgent.cli_provider || "claude";
+    if (["claude", "codex", "gemini", "opencode"].includes(execProvider)) {
+      const projPath = resolveProjectPath({ project_path: parentTask.project_path, description: parentTask.description, title: parentTask.title });
+      const logFilePath = path.join(logsDir, `${delegatedTaskId}.log`);
+      const spawnPrompt = buildSubtaskDelegationPrompt(parentTask, subtask, execAgent, targetDeptId, targetDeptName);
+
+      appendTaskLog(delegatedTaskId, "system", `RUN start (agent=${execAgent.name}, provider=${execProvider})`);
+      const delegateModelConfig = getProviderModelConfig();
+      const delegateModel = delegateModelConfig[execProvider]?.model || undefined;
+      const delegateReasoningLevel = delegateModelConfig[execProvider]?.reasoningLevel || undefined;
+      const child = spawnCliAgent(delegatedTaskId, execProvider, spawnPrompt, projPath, logFilePath, delegateModel, delegateReasoningLevel);
+      child.on("close", (code) => {
+        handleSubtaskDelegationComplete(delegatedTaskId, subtask.id, code ?? 1);
+      });
+
+      notifyCeo(`${targetDeptName} ${execName}가 서브태스크 '${subtask.title}' 작업을 시작했습니다.`, delegatedTaskId);
+      startProgressTimer(delegatedTaskId, delegatedTitle, targetDeptId);
+    }
+  }, ackDelay);
+}
+
+/**
+ * Handle completion of a delegated subtask task.
+ */
+function handleSubtaskDelegationComplete(delegatedTaskId: string, subtaskId: string, exitCode: number): void {
+  // Use standard completion flow for the delegated task itself
+  handleTaskRunComplete(delegatedTaskId, exitCode);
+
+  if (exitCode === 0) {
+    // Mark the linked subtask as done
+    db.prepare(
+      "UPDATE subtasks SET status = 'done', completed_at = ?, blocked_reason = NULL WHERE id = ?"
+    ).run(nowMs(), subtaskId);
+  } else {
+    // Mark subtask as blocked with failure reason
+    db.prepare(
+      "UPDATE subtasks SET status = 'blocked', blocked_reason = '위임 작업 실패' WHERE id = ?"
+    ).run(subtaskId);
+  }
+
+  const updatedSub = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(subtaskId);
+  broadcast("subtask_update", updatedSub);
+
+  // Check if ALL subtasks of the parent task are now done
+  const sub = db.prepare("SELECT task_id FROM subtasks WHERE id = ?").get(subtaskId) as { task_id: string } | undefined;
+  if (sub && exitCode === 0) {
+    const remaining = db.prepare(
+      "SELECT COUNT(*) as cnt FROM subtasks WHERE task_id = ? AND status != 'done'"
+    ).get(sub.task_id) as { cnt: number };
+    if (remaining.cnt === 0) {
+      const parentTask = db.prepare("SELECT title, status FROM tasks WHERE id = ?").get(sub.task_id) as { title: string; status: string } | undefined;
+      if (parentTask) {
+        notifyCeo(`'${parentTask.title}' 의 모든 서브태스크(부서간 협업 포함)가 완료되었습니다. ✅`, sub.task_id);
+        if (parentTask.status === "review") {
+          setTimeout(() => finishReview(sub.task_id, parentTask.title), 1200);
+        }
+      }
+    }
+  }
+
+  // Trigger next delegation callback (handled via subtaskDelegationCallbacks in finishReview)
+  // The callback is triggered after finishReview completes for the delegated task
+}
+
+// ---------------------------------------------------------------------------
 // Sequential cross-department cooperation: one department at a time
 // ---------------------------------------------------------------------------
 interface CrossDeptContext {
@@ -3309,14 +4388,18 @@ function startCrossDeptCooperation(
   deptIds: string[],
   index: number,
   ctx: CrossDeptContext,
+  onAllDone?: () => void,
 ): void {
-  if (index >= deptIds.length) return; // All departments processed
+  if (index >= deptIds.length) {
+    onAllDone?.();
+    return;
+  }
 
   const crossDeptId = deptIds[index];
   const crossLeader = findTeamLeader(crossDeptId);
   if (!crossLeader) {
     // Skip this dept, try next
-    startCrossDeptCooperation(deptIds, index + 1, ctx);
+    startCrossDeptCooperation(deptIds, index + 1, ctx, onAllDone);
     return;
   }
 
@@ -3398,8 +4481,14 @@ function startCrossDeptCooperation(
       crossDeptNextCallbacks.set(crossTaskId, () => {
         const nextDelay = 2000 + Math.random() * 1000;
         setTimeout(() => {
-          startCrossDeptCooperation(deptIds, index + 1, ctx);
+          startCrossDeptCooperation(deptIds, index + 1, ctx, onAllDone);
         }, nextDelay);
+      });
+    } else if (onAllDone) {
+      // Last department in the queue: continue only after this cross task completes review.
+      crossDeptNextCallbacks.set(crossTaskId, () => {
+        const nextDelay = 1200 + Math.random() * 800;
+        setTimeout(() => onAllDone(), nextDelay);
       });
     }
 
@@ -3427,7 +4516,10 @@ function startCrossDeptCooperation(
         ].filter(Boolean).join("\n");
 
         appendTaskLog(crossTaskId, "system", `RUN start (agent=${execAgent.name}, provider=${execProvider})`);
-        const child = spawnCliAgent(crossTaskId, execProvider, spawnPrompt, projPath, logFilePath);
+        const crossModelConfig = getProviderModelConfig();
+        const crossModel = crossModelConfig[execProvider]?.model || undefined;
+        const crossReasoningLevel = crossModelConfig[execProvider]?.reasoningLevel || undefined;
+        const child = spawnCliAgent(crossTaskId, execProvider, spawnPrompt, projPath, logFilePath, crossModel, crossReasoningLevel);
         child.on("close", (code) => {
           handleTaskRunComplete(crossTaskId, code ?? 1);
         });
@@ -3543,14 +4635,62 @@ function handleTaskDelegation(
 
     broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
 
-    const mentionedDepts = detectTargetDepartments(ceoMessage).filter((d) => d !== leaderDeptId);
+    const mentionedDepts = [...new Set(
+      detectTargetDepartments(ceoMessage).filter((d) => d !== leaderDeptId)
+    )];
+    const isPlanningLead = leaderDeptId === "planning";
+
+    if (isPlanningLead) {
+      const relatedLabel = mentionedDepts.length > 0
+        ? mentionedDepts.map(getDeptName).join(", ")
+        : "없음";
+      appendTaskLog(taskId, "system", `Planning pre-check related departments: ${relatedLabel}`);
+      notifyCeo(`[기획팀] '${taskTitle}' 유관부서 사전 파악 완료: ${relatedLabel}`, taskId);
+    }
+
+    const runCrossDeptBeforeDelegationIfNeeded = (next: () => void) => {
+      if (!(isPlanningLead && mentionedDepts.length > 0)) {
+        next();
+        return;
+      }
+
+      const crossDeptNames = mentionedDepts.map(getDeptName).join(", ");
+      notifyCeo(`[CEO OFFICE] 기획팀 선행 협업 처리 시작: ${crossDeptNames}`, taskId);
+      startCrossDeptCooperation(
+        mentionedDepts,
+        0,
+        { teamLeader, taskTitle, ceoMessage, leaderDeptId, leaderDeptName, leaderName, lang, taskId },
+        () => {
+          notifyCeo(`[CEO OFFICE] 유관부서 선행 처리 완료. 이제 내부 업무 하달을 시작합니다.`, taskId);
+          next();
+        },
+      );
+    };
+
+    const runCrossDeptAfterMainIfNeeded = () => {
+      if (isPlanningLead || mentionedDepts.length === 0) return;
+      const crossDelay = 3000 + Math.random() * 1000;
+      setTimeout(() => {
+        startCrossDeptCooperation(mentionedDepts, 0, {
+          teamLeader, taskTitle, ceoMessage, leaderDeptId, leaderDeptName, leaderName, lang, taskId,
+        });
+      }, crossDelay);
+    };
 
     if (subordinate) {
       const subName = lang === "ko" ? (subordinate.name_ko || subordinate.name) : subordinate.name;
       const subRole = getRoleLabel(subordinate.role, lang);
 
       let ackMsg: string;
-      if (mentionedDepts.length > 0) {
+      if (isPlanningLead && mentionedDepts.length > 0) {
+        const crossDeptNames = mentionedDepts.map(getDeptName).join(", ");
+        ackMsg = pickL(l(
+          [`네, 대표님! 먼저 ${crossDeptNames} 유관부서 목록을 확정하고 회의/선행 협업을 완료한 뒤 ${subRole} ${subName}에게 하달하겠습니다. 📋`, `알겠습니다! 기획팀에서 유관부서 선처리까지 마친 뒤 ${subName}에게 최종 하달하겠습니다.`],
+          [`Understood. I'll first confirm related departments (${crossDeptNames}), finish cross-team pre-processing, then delegate to ${subRole} ${subName}. 📋`],
+          [`了解しました。まず関連部門（${crossDeptNames}）を確定し、先行協業完了後に${subRole} ${subName}へ委任します。📋`],
+          [`收到。先确认相关部门（${crossDeptNames}）并完成前置协作后，再下达给${subRole} ${subName}。📋`],
+        ), lang);
+      } else if (mentionedDepts.length > 0) {
         const crossDeptNames = mentionedDepts.map(getDeptName).join(", ");
         ackMsg = pickL(l(
           [`네, 대표님! 확인했습니다. ${subRole} ${subName}에게 할당하고, ${crossDeptNames}에도 협조 요청하겠습니다! 📋`, `알겠습니다! ${subName}가 메인으로 진행하고, ${crossDeptNames}과 협업 조율하겠습니다 🤝`],
@@ -3568,97 +4708,49 @@ function handleTaskDelegation(
       }
       sendAgentMessage(teamLeader, ackMsg, "chat", "agent", null, taskId);
 
-      // --- Step 2: Delegate to subordinate (2~3 sec) ---
-      const delegateDelay = 2000 + Math.random() * 1000;
-      setTimeout(() => {
-        const t2 = nowMs();
-        db.prepare(
-          "UPDATE tasks SET assigned_agent_id = ?, status = 'planned', updated_at = ? WHERE id = ?"
-        ).run(subordinate.id, t2, taskId);
-        db.prepare("UPDATE agents SET current_task_id = ? WHERE id = ?").run(taskId, subordinate.id);
-        appendTaskLog(taskId, "system", `${leaderName} → ${subName}`);
-
-        broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
-        broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(subordinate.id));
-
-        const delegateMsg = pickL(l(
-          [`${subName}, 대표님 지시사항이야. "${ceoMessage}" — 확인하고 진행해줘!`, `${subName}! 긴급 업무야. "${ceoMessage}" — 우선순위 높게 처리 부탁해.`, `${subName}, 새 업무 할당이야: "${ceoMessage}" — 진행 상황 수시로 공유해줘 👍`],
-          [`${subName}, directive from the CEO: "${ceoMessage}" — please handle this!`, `${subName}! Priority task: "${ceoMessage}" — needs immediate attention.`, `${subName}, new assignment: "${ceoMessage}" — keep me posted on progress 👍`],
-          [`${subName}、CEOからの指示だよ。"${ceoMessage}" — 確認して進めて！`, `${subName}！優先タスク: "${ceoMessage}" — よろしく頼む 👍`],
-          [`${subName}，CEO的指示："${ceoMessage}" — 请跟进处理！`, `${subName}！优先任务："${ceoMessage}" — 随时更新进度 👍`],
-        ), lang);
-        sendAgentMessage(teamLeader, delegateMsg, "task_assign", "agent", subordinate.id, taskId);
-
-        // --- Step 3: Subordinate acknowledges (1~2 sec) ---
-        const subAckDelay = 1000 + Math.random() * 1000;
+      const delegateToSubordinate = () => {
+        // --- Step 2: Delegate to subordinate (2~3 sec) ---
+        const delegateDelay = 2000 + Math.random() * 1000;
         setTimeout(() => {
-          const leaderRole = getRoleLabel(teamLeader.role, lang);
-          const subAckMsg = pickL(l(
-            [`네, ${leaderRole} ${leaderName}님! 확인했습니다. 바로 착수하겠습니다! 💪`, `알겠습니다! 바로 시작하겠습니다. 진행 상황 공유 드리겠습니다.`, `확인했습니다, ${leaderName}님! 최선을 다해 처리하겠습니다 🔥`],
-            [`Yes, ${leaderName}! Confirmed. Starting right away! 💪`, `Got it! On it now. I'll keep you updated on progress.`, `Confirmed, ${leaderName}! I'll give it my best 🔥`],
-            [`はい、${leaderName}さん！了解しました。すぐ取りかかります！💪`, `承知しました！進捗共有します 🔥`],
-            [`好的，${leaderName}！收到，马上开始！💪`, `明白了！会及时汇报进度 🔥`],
-          ), lang);
-          sendAgentMessage(subordinate, subAckMsg, "chat", "agent", null, taskId);
-
-          const t3 = nowMs();
+          const t2 = nowMs();
           db.prepare(
-            "UPDATE tasks SET status = 'in_progress', started_at = ?, updated_at = ? WHERE id = ?"
-          ).run(t3, t3, taskId);
-          db.prepare(
-            "UPDATE agents SET status = 'working', current_task_id = ? WHERE id = ?"
-          ).run(taskId, subordinate.id);
-          appendTaskLog(taskId, "system", `${subName} started`);
+            "UPDATE tasks SET assigned_agent_id = ?, status = 'planned', updated_at = ? WHERE id = ?"
+          ).run(subordinate.id, t2, taskId);
+          db.prepare("UPDATE agents SET current_task_id = ? WHERE id = ?").run(taskId, subordinate.id);
+          appendTaskLog(taskId, "system", `${leaderName} → ${subName}`);
 
           broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
           broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(subordinate.id));
 
-          // Actually spawn the CLI agent to do the work
-          const subProvider = subordinate.cli_provider || "claude";
-          if (["claude", "codex", "gemini", "opencode"].includes(subProvider)) {
-            const taskData = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId) as {
-              title: string; description: string | null; project_path: string | null;
-            } | undefined;
-            if (taskData) {
-              const projPath = resolveProjectPath(taskData);
-              const logFilePath = path.join(logsDir, `${taskId}.log`);
-              const roleLabel = { team_leader: "Team Leader", senior: "Senior", junior: "Junior", intern: "Intern" }[subordinate.role] || subordinate.role;
-              const deptConstraint = getDeptRoleConstraint(leaderDeptId, leaderDeptName);
-              const conversationCtx = getRecentConversationContext(subordinate.id);
-              const spawnPrompt = [
-                `[Task] ${taskData.title}`,
-                taskData.description ? `\n${taskData.description}` : "",
-                conversationCtx,
-                `\n---`,
-                `Agent: ${subordinate.name} (${roleLabel}, ${leaderDeptName})`,
-                subordinate.personality ? `Personality: ${subordinate.personality}` : "",
-                deptConstraint,
-                `Please complete the task above thoroughly. Use the conversation context above if relevant.`,
-              ].filter(Boolean).join("\n");
+          const delegateMsg = pickL(l(
+            [`${subName}, 대표님 지시사항이야. "${ceoMessage}" — 확인하고 진행해줘!`, `${subName}! 긴급 업무야. "${ceoMessage}" — 우선순위 높게 처리 부탁해.`, `${subName}, 새 업무 할당이야: "${ceoMessage}" — 진행 상황 수시로 공유해줘 👍`],
+            [`${subName}, directive from the CEO: "${ceoMessage}" — please handle this!`, `${subName}! Priority task: "${ceoMessage}" — needs immediate attention.`, `${subName}, new assignment: "${ceoMessage}" — keep me posted on progress 👍`],
+            [`${subName}、CEOからの指示だよ。"${ceoMessage}" — 確認して進めて！`, `${subName}！優先タスク: "${ceoMessage}" — よろしく頼む 👍`],
+            [`${subName}，CEO的指示："${ceoMessage}" — 请跟进处理！`, `${subName}！优先任务："${ceoMessage}" — 随时更新进度 👍`],
+          ), lang);
+          sendAgentMessage(teamLeader, delegateMsg, "task_assign", "agent", subordinate.id, taskId);
 
-              appendTaskLog(taskId, "system", `RUN start (agent=${subordinate.name}, provider=${subProvider})`);
-              const child = spawnCliAgent(taskId, subProvider, spawnPrompt, projPath, logFilePath);
-              child.on("close", (code) => {
-                handleTaskRunComplete(taskId, code ?? 1);
-              });
-
-              notifyCeo(`${subName}가 '${taskData.title}' 작업을 시작했습니다.`, taskId);
-              startProgressTimer(taskId, taskData.title, leaderDeptId);
-            }
-          }
-        }, subAckDelay);
-
-        // --- Step 4: Cross-department cooperation (SEQUENTIAL — one dept at a time) ---
-        if (mentionedDepts.length > 0) {
-          const crossDelay = 3000 + Math.random() * 1000;
+          // --- Step 3: Subordinate acknowledges (1~2 sec) ---
+          const subAckDelay = 1000 + Math.random() * 1000;
           setTimeout(() => {
-            // Start only the first department; subsequent ones are chained via crossDeptNextCallbacks
-            startCrossDeptCooperation(mentionedDepts, 0, {
-              teamLeader, taskTitle, ceoMessage, leaderDeptId, leaderDeptName, leaderName, lang, taskId,
-            });
-          }, crossDelay);
-        }
-      }, delegateDelay);
+            const leaderRole = getRoleLabel(teamLeader.role, lang);
+            const subAckMsg = pickL(l(
+              [`네, ${leaderRole} ${leaderName}님! 확인했습니다. 바로 착수하겠습니다! 💪`, `알겠습니다! 바로 시작하겠습니다. 진행 상황 공유 드리겠습니다.`, `확인했습니다, ${leaderName}님! 최선을 다해 처리하겠습니다 🔥`],
+              [`Yes, ${leaderName}! Confirmed. Starting right away! 💪`, `Got it! On it now. I'll keep you updated on progress.`, `Confirmed, ${leaderName}! I'll give it my best 🔥`],
+              [`はい、${leaderName}さん！了解しました。すぐ取りかかります！💪`, `承知しました！進捗共有します 🔥`],
+              [`好的，${leaderName}！收到，马上开始！💪`, `明白了！会及时汇报进度 🔥`],
+            ), lang);
+            sendAgentMessage(subordinate, subAckMsg, "chat", "agent", null, taskId);
+            startTaskExecutionForAgent(taskId, subordinate, leaderDeptId, leaderDeptName);
+            runCrossDeptAfterMainIfNeeded();
+          }, subAckDelay);
+        }, delegateDelay);
+      };
+
+      startPlannedApprovalMeeting(taskId, taskTitle, leaderDeptId, () => {
+        seedApprovedPlanSubtasks(taskId, leaderDeptId);
+        runCrossDeptBeforeDelegationIfNeeded(delegateToSubordinate);
+      });
     } else {
       // No subordinate — team leader handles it themselves
       const selfMsg = pickL(l(
@@ -3671,13 +4763,21 @@ function handleTaskDelegation(
 
       const t2 = nowMs();
       db.prepare(
-        "UPDATE tasks SET assigned_agent_id = ?, status = 'in_progress', started_at = ?, updated_at = ? WHERE id = ?"
-      ).run(teamLeader.id, t2, t2, taskId);
-      db.prepare("UPDATE agents SET status = 'working', current_task_id = ? WHERE id = ?").run(taskId, teamLeader.id);
-      appendTaskLog(taskId, "system", `${leaderName} self-assigned`);
+        "UPDATE tasks SET assigned_agent_id = ?, status = 'planned', updated_at = ? WHERE id = ?"
+      ).run(teamLeader.id, t2, taskId);
+      db.prepare("UPDATE agents SET current_task_id = ? WHERE id = ?").run(taskId, teamLeader.id);
+      appendTaskLog(taskId, "system", `${leaderName} self-assigned (planned)`);
 
       broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
       broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(teamLeader.id));
+
+      startPlannedApprovalMeeting(taskId, taskTitle, leaderDeptId, () => {
+        seedApprovedPlanSubtasks(taskId, leaderDeptId);
+        runCrossDeptBeforeDelegationIfNeeded(() => {
+          startTaskExecutionForAgent(taskId, teamLeader, leaderDeptId, leaderDeptName);
+          runCrossDeptAfterMainIfNeeded();
+        });
+      });
     }
   }, ackDelay);
 }
@@ -4118,7 +5218,7 @@ function prettyStreamJson(raw: string): string {
         continue;
       }
 
-      // Codex: item.completed (reasoning or agent_message)
+      // Codex: item.completed (reasoning, agent_message, or collab)
       if (j.type === "item.completed" && j.item) {
         const item = j.item;
         if (item.type === "agent_message" && item.text) {
@@ -4133,6 +5233,25 @@ function prettyStreamJson(raw: string): string {
           if (out.includes("error") || out.length < 200) {
             chunks.push(`[output] ${out.slice(0, 200)}\n`);
           }
+        } else if (item.type === "collab_tool_call") {
+          if (item.tool === "spawn_agent" && item.prompt) {
+            chunks.push(`\n[spawn_agent] ${String(item.prompt).split("\n")[0].slice(0, 80)}\n`);
+          } else if (item.tool === "close_agent") {
+            for (const [, st] of Object.entries(item.agents_states || {})) {
+              const state = st as Record<string, unknown>;
+              if (state.message) chunks.push(`[agent_done] ${String(state.message).slice(0, 100)}\n`);
+            }
+          }
+          // "wait" tool: silent
+        }
+        continue;
+      }
+
+      // Codex: item.started (collab_tool_call display)
+      if (j.type === "item.started" && j.item) {
+        const item = j.item;
+        if (item.type === "collab_tool_call" && item.tool === "spawn_agent" && item.prompt) {
+          chunks.push(`\n[spawn_agent] ${String(item.prompt).split("\n")[0].slice(0, 80)}\n`);
         }
         continue;
       }
@@ -4781,6 +5900,162 @@ async function fetchOpenCodeModels(): Promise<Record<string, string[]>> {
   return grouped;
 }
 
+// ---------------------------------------------------------------------------
+// CLI Models — dynamic model lists for CLI providers
+// ---------------------------------------------------------------------------
+interface CliModelInfoServer {
+  slug: string;
+  displayName?: string;
+  description?: string;
+  reasoningLevels?: Array<{ effort: string; description: string }>;
+  defaultReasoningLevel?: string;
+}
+
+let cachedCliModels: { data: Record<string, CliModelInfoServer[]>; loadedAt: number } | null = null;
+
+/**
+ * Read Codex models from ~/.codex/models_cache.json
+ * Returns CliModelInfoServer[] with reasoning levels from the cache
+ */
+function readCodexModelsCache(): CliModelInfoServer[] {
+  try {
+    const cachePath = path.join(os.homedir(), ".codex", "models_cache.json");
+    if (!fs.existsSync(cachePath)) return [];
+    const raw = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+    const modelsArr: Array<{
+      slug?: string;
+      display_name?: string;
+      description?: string;
+      visibility?: string;
+      priority?: number;
+      supported_reasoning_levels?: Array<{ effort: string; description: string }>;
+      default_reasoning_level?: string;
+    }> = Array.isArray(raw) ? raw : (raw.models || raw.data || []);
+
+    const listModels = modelsArr
+      .filter((m) => m.visibility === "list" && m.slug)
+      .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
+
+    return listModels.map((m) => ({
+      slug: m.slug!,
+      displayName: m.display_name || m.slug!,
+      description: m.description,
+      reasoningLevels: m.supported_reasoning_levels && m.supported_reasoning_levels.length > 0
+        ? m.supported_reasoning_levels
+        : undefined,
+      defaultReasoningLevel: m.default_reasoning_level || undefined,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Read Gemini CLI models from defaultModelConfigs.js in the Gemini CLI installation.
+ * Falls back to a hardcoded list of known models.
+ */
+function fetchGeminiModels(): CliModelInfoServer[] {
+  const FALLBACK: CliModelInfoServer[] = [
+    { slug: "gemini-3-pro-preview", displayName: "Gemini 3 Pro Preview" },
+    { slug: "gemini-3-flash-preview", displayName: "Gemini 3 Flash Preview" },
+    { slug: "gemini-2.5-pro", displayName: "Gemini 2.5 Pro" },
+    { slug: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash" },
+    { slug: "gemini-2.5-flash-lite", displayName: "Gemini 2.5 Flash Lite" },
+  ];
+
+  try {
+    // 1. Find gemini binary
+    const geminiPath = execFileSync("which", ["gemini"], {
+      stdio: "pipe", timeout: 5000, encoding: "utf8",
+    }).trim();
+    if (!geminiPath) return FALLBACK;
+
+    // 2. Resolve symlinks to real installation path
+    const realPath = fs.realpathSync(geminiPath);
+
+    // 3. Walk up from resolved binary to find gemini-cli-core config
+    let dir = path.dirname(realPath);
+    let configPath = "";
+    for (let i = 0; i < 10; i++) {
+      const candidate = path.join(
+        dir, "node_modules", "@google", "gemini-cli-core",
+        "dist", "src", "config", "defaultModelConfigs.js",
+      );
+      if (fs.existsSync(candidate)) {
+        configPath = candidate;
+        break;
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+
+    if (!configPath) return FALLBACK;
+
+    // 4. Parse the config file for user-facing models (those extending chat-base-*)
+    const content = fs.readFileSync(configPath, "utf8");
+
+    // Match config entries: "model-slug": { ... extends: "chat-base-..." ... }
+    // We use a broad regex that captures the key and content within braces
+    const models: CliModelInfoServer[] = [];
+    const entryRegex = /["']([a-z][a-z0-9._-]+)["']\s*:\s*\{([^}]*extends\s*:\s*["']chat-base[^"']*["'][^}]*)\}/g;
+    let match;
+    while ((match = entryRegex.exec(content)) !== null) {
+      const slug = match[1];
+      if (slug.startsWith("chat-base")) continue;
+      models.push({ slug, displayName: slug });
+    }
+
+    return models.length > 0 ? models : FALLBACK;
+  } catch {
+    return FALLBACK;
+  }
+}
+
+/** Convert a plain string to CliModelInfoServer */
+function toModelInfo(slug: string): CliModelInfoServer {
+  return { slug, displayName: slug };
+}
+
+app.get("/api/cli-models", async (_req, res) => {
+  const now = Date.now();
+  if (cachedCliModels && now - cachedCliModels.loadedAt < MODELS_CACHE_TTL) {
+    return res.json({ models: cachedCliModels.data });
+  }
+
+  const models: Record<string, CliModelInfoServer[]> = {
+    claude: [
+      "opus", "sonnet", "haiku",
+      "claude-opus-4-6", "claude-sonnet-4-6", "claude-sonnet-4-5", "claude-haiku-4-5",
+    ].map(toModelInfo),
+    gemini: fetchGeminiModels(),
+    opencode: [],
+  };
+
+  // Codex: dynamic from ~/.codex/models_cache.json
+  const codexModels = readCodexModelsCache();
+  models.codex = codexModels.length > 0
+    ? codexModels
+    : ["gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex-max", "gpt-5.2", "gpt-5.1-codex-mini"].map(toModelInfo);
+
+  // OpenCode: dynamic from `opencode models` CLI
+  try {
+    const ocModels = await fetchOpenCodeModels();
+    const ocList: string[] = [];
+    for (const [, modelList] of Object.entries(ocModels)) {
+      for (const m of modelList) {
+        if (!ocList.includes(m)) ocList.push(m);
+      }
+    }
+    if (ocList.length > 0) models.opencode = ocList.map(toModelInfo);
+  } catch {
+    // opencode not available — keep empty
+  }
+
+  cachedCliModels = { data: models, loadedAt: Date.now() };
+  res.json({ models });
+});
+
 app.get("/api/oauth/models", async (_req, res) => {
   const now = Date.now();
   if (cachedModels && now - cachedModels.loadedAt < MODELS_CACHE_TTL) {
@@ -4808,6 +6083,72 @@ app.get("/api/oauth/models", async (_req, res) => {
   } catch (err) {
     res.status(500).json({ error: "model_fetch_failed", message: String(err) });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Skills (skills.sh) cached proxy
+// ---------------------------------------------------------------------------
+
+interface SkillEntry {
+  rank: number;
+  name: string;
+  repo: string;
+  installs: number;
+}
+
+let cachedSkills: { data: SkillEntry[]; loadedAt: number } | null = null;
+const SKILLS_CACHE_TTL = 3600_000; // 1 hour
+
+async function fetchSkillsFromSite(): Promise<SkillEntry[]> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    const resp = await fetch("https://skills.sh", { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!resp.ok) return [];
+    const html = await resp.text();
+
+    // Next.js RSC payload embeds the data with escaped quotes: initialSkills\":[{\"source\":...}]
+    // Find the start of the array after "initialSkills"
+    const anchor = html.indexOf("initialSkills");
+    if (anchor === -1) return [];
+    const bracketStart = html.indexOf(":[", anchor);
+    if (bracketStart === -1) return [];
+    const arrStart = bracketStart + 1; // position of '['
+
+    // Walk to find the matching ']'
+    let depth = 0;
+    let arrEnd = arrStart;
+    for (let i = arrStart; i < html.length; i++) {
+      if (html[i] === "[") depth++;
+      else if (html[i] === "]") depth--;
+      if (depth === 0) { arrEnd = i + 1; break; }
+    }
+
+    // Unescape RSC-style escaped quotes: \\" → "
+    const raw = html.slice(arrStart, arrEnd).replace(/\\"/g, '"');
+    const items: Array<{ source?: string; skillId?: string; name?: string; installs?: number }> = JSON.parse(raw);
+
+    return items.map((obj, i) => ({
+      rank: i + 1,
+      name: obj.name ?? obj.skillId ?? "",
+      repo: obj.source ?? "",
+      installs: typeof obj.installs === "number" ? obj.installs : 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+app.get("/api/skills", async (_req, res) => {
+  if (cachedSkills && Date.now() - cachedSkills.loadedAt < SKILLS_CACHE_TTL) {
+    return res.json({ skills: cachedSkills.data });
+  }
+  const skills = await fetchSkillsFromSite();
+  if (skills.length > 0) {
+    cachedSkills = { data: skills, loadedAt: Date.now() };
+  }
+  res.json({ skills });
 });
 
 // ---------------------------------------------------------------------------
@@ -4995,9 +6336,20 @@ function rotateBreaks(): void {
 
   if (allAgents.length === 0) return;
 
-  // Group by department
-  const byDept = new Map<string, typeof allAgents>();
+  // Meeting/CEO-office summoned agents should stay in office, not break room.
   for (const a of allAgents) {
+    if (a.status === "break" && isAgentInMeeting(a.id)) {
+      db.prepare("UPDATE agents SET status = 'idle' WHERE id = ?").run(a.id);
+      broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(a.id));
+    }
+  }
+
+  const candidates = allAgents.filter((a) => !isAgentInMeeting(a.id));
+  if (candidates.length === 0) return;
+
+  // Group by department
+  const byDept = new Map<string, typeof candidates>();
+  for (const a of candidates) {
     const list = byDept.get(a.department_id) || [];
     list.push(a);
     byDept.set(a.department_id, list);
@@ -5083,10 +6435,14 @@ function gracefulShutdown(signal: string): void {
   // Stop all active CLI processes
   for (const [taskId, child] of activeProcesses) {
     console.log(`[CLImpire] Stopping process for task ${taskId} (pid: ${child.pid})`);
+    stopRequestedTasks.add(taskId);
     if (child.pid) {
       killPidTree(child.pid);
     }
     activeProcesses.delete(taskId);
+
+    // Roll back in-flight task code on shutdown.
+    rollbackTaskWorktree(taskId, "server_shutdown");
 
     // Reset agent status for running tasks
     const task = db.prepare("SELECT assigned_agent_id FROM tasks WHERE id = ?").get(taskId) as {

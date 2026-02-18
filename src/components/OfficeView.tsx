@@ -32,6 +32,13 @@ interface CrossDeptDelivery {
   toAgentId: string;
 }
 
+interface CeoOfficeCall {
+  id: string;
+  fromAgentId: string;
+  seatIndex: number;
+  phase: "kickoff" | "review";
+}
+
 interface OfficeViewProps {
   departments: Department[];
   agents: Agent[];
@@ -40,6 +47,8 @@ interface OfficeViewProps {
   unreadAgentIds?: Set<string>;
   crossDeptDeliveries?: CrossDeptDelivery[];
   onCrossDeptDeliveryProcessed?: (id: string) => void;
+  ceoOfficeCalls?: CeoOfficeCall[];
+  onCeoOfficeCallProcessed?: (id: string) => void;
   onSelectAgent: (agent: Agent) => void;
   onSelectDepartment: (dept: Department) => void;
 }
@@ -337,6 +346,8 @@ export default function OfficeView({
   unreadAgentIds,
   crossDeptDeliveries,
   onCrossDeptDeliveryProcessed,
+  ceoOfficeCalls,
+  onCeoOfficeCallProcessed,
   onSelectAgent, onSelectDepartment,
 }: OfficeViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -362,7 +373,9 @@ export default function OfficeView({
   const prevAssignRef = useRef<Set<string>>(new Set());
   const agentPosRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const processedCrossDeptRef = useRef<Set<string>>(new Set());
+  const processedCeoOfficeRef = useRef<Set<string>>(new Set());
   const spriteMapRef = useRef<Map<string, number>>(new Map());
+  const ceoMeetingSeatsRef = useRef<Array<{ x: number; y: number }>>([]);
   const totalHRef = useRef(600);
   const officeWRef = useRef(MIN_OFFICE_W);
   const breakRoomRectRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -392,6 +405,7 @@ export default function OfficeView({
     breakBubblesRef.current = [];
     breakSteamParticlesRef.current = null;
     breakRoomRectRef.current = null;
+    ceoMeetingSeatsRef.current = [];
 
     const { departments, agents, tasks, subAgents, unreadAgentIds: unread } = dataRef.current;
 
@@ -471,6 +485,40 @@ export default function OfficeView({
     ceoPlateText.position.set(cdx + 32, cdy + 27.5);
     ceoLayer.addChild(ceoPlateText);
     drawChair(ceoLayer, cdx + 32, cdy + 46, 0xb8860b);
+
+    // 6-seat collaboration table in CEO OFFICE
+    const mtX = 220;
+    const mtY = 34;
+    const mtW = 220;
+    const mtH = 28;
+    const mt = new Graphics();
+    mt.roundRect(mtX, mtY, mtW, mtH, 12).fill(0x6f4f1e);
+    mt.roundRect(mtX + 3, mtY + 3, mtW - 6, mtH - 6, 10).fill(0x9d7440);
+    mt.roundRect(mtX + 64, mtY + 8, 92, 12, 5).fill({ color: 0xf7d89a, alpha: 0.35 });
+    ceoLayer.addChild(mt);
+
+    const meetingSeatX = [mtX + 40, mtX + 110, mtX + 180];
+    for (const sx of meetingSeatX) {
+      drawChair(ceoLayer, sx, mtY - 4, 0x8a6230);
+      drawChair(ceoLayer, sx, mtY + mtH + 10, 0x8a6230);
+    }
+
+    const meetingLabel = new Text({
+      text: "6P COLLAB TABLE",
+      style: new TextStyle({ fontSize: 7, fill: 0xf4c862, fontWeight: "bold", fontFamily: "monospace", letterSpacing: 1 }),
+    });
+    meetingLabel.anchor.set(0.5, 0.5);
+    meetingLabel.position.set(mtX + mtW / 2, mtY + mtH / 2);
+    ceoLayer.addChild(meetingLabel);
+
+    ceoMeetingSeatsRef.current = [
+      { x: meetingSeatX[0], y: mtY + 2 },
+      { x: meetingSeatX[1], y: mtY + 2 },
+      { x: meetingSeatX[2], y: mtY + 2 },
+      { x: meetingSeatX[0], y: mtY + mtH + 20 },
+      { x: meetingSeatX[1], y: mtY + mtH + 20 },
+      { x: meetingSeatX[2], y: mtY + mtH + 20 },
+    ];
 
     // Stats panels (right side)
     const workingCount = agents.filter(a => a.status === "working").length;
@@ -1359,6 +1407,120 @@ export default function OfficeView({
       onCrossDeptDeliveryProcessed?.(cd.id);
     }
   }, [crossDeptDeliveries, onCrossDeptDeliveryProcessed]);
+
+  /* ── CEO OFFICE CALL ANIMATIONS (leaders gather at 6P table) ── */
+  useEffect(() => {
+    if (!ceoOfficeCalls?.length) return;
+    const dlLayer = deliveryLayerRef.current;
+    const textures = texturesRef.current;
+    if (!dlLayer) return;
+
+    for (const call of ceoOfficeCalls) {
+      if (processedCeoOfficeRef.current.has(call.id)) continue;
+      processedCeoOfficeRef.current.add(call.id);
+
+      const fromPos = agentPosRef.current.get(call.fromAgentId);
+      const seats = ceoMeetingSeatsRef.current;
+      const seat = seats.length > 0 ? seats[call.seatIndex % seats.length] : null;
+      if (!fromPos || !seat) {
+        onCeoOfficeCallProcessed?.(call.id);
+        continue;
+      }
+
+      const dc = new Container();
+      const spriteNum = spriteMapRef.current.get(call.fromAgentId) ?? ((hashStr(call.fromAgentId) % 12) + 1);
+      const frames: Texture[] = [];
+      for (let f = 1; f <= 3; f++) {
+        const key = `${spriteNum}-D-${f}`;
+        if (textures[key]) frames.push(textures[key]);
+      }
+
+      if (frames.length > 0) {
+        const animSprite = new AnimatedSprite(frames);
+        animSprite.anchor.set(0.5, 1);
+        const scale = 44 / animSprite.texture.height;
+        animSprite.scale.set(scale);
+        animSprite.animationSpeed = 0.12;
+        animSprite.play();
+        dc.addChild(animSprite);
+      } else {
+        const fb = new Text({ text: "🧑‍💼", style: new TextStyle({ fontSize: 20 }) });
+        fb.anchor.set(0.5, 1);
+        dc.addChild(fb);
+      }
+
+      const badge = new Graphics();
+      const badgeColor = call.phase === "review" ? 0x34d399 : 0xf59e0b;
+      badge.roundRect(-24, 4, 48, 13, 4).fill({ color: badgeColor, alpha: 0.9 });
+      badge.roundRect(-24, 4, 48, 13, 4).stroke({ width: 1, color: 0x111111, alpha: 0.35 });
+      dc.addChild(badge);
+      const badgeText = new Text({
+        text: call.phase === "review" ? "✅ 승인" : "📣 회의",
+        style: new TextStyle({ fontSize: 7, fill: 0x111111, fontWeight: "bold", fontFamily: "system-ui, sans-serif" }),
+      });
+      badgeText.anchor.set(0.5, 0.5);
+      badgeText.position.set(0, 10.5);
+      dc.addChild(badgeText);
+
+      // Meeting speech bubble preview (UX: show leaders are actively discussing)
+      const kickoffLines = [
+        "유관부서 영향도 확인중",
+        "리스크/의존성 공유중",
+        "일정/우선순위 조율중",
+        "담당 경계 정의중",
+      ];
+      const reviewLines = [
+        "보완사항 반영 확인중",
+        "최종안 Approved 검토중",
+        "수정 아이디어 공유중",
+        "결과물 교차 검토중",
+      ];
+      const pool = call.phase === "review" ? reviewLines : kickoffLines;
+      const line = pool[hashStr(`${call.fromAgentId}-${call.id}`) % pool.length];
+
+      const bubbleText = new Text({
+        text: line,
+        style: new TextStyle({
+          fontSize: 7,
+          fill: 0x2b2b2b,
+          fontFamily: "system-ui, sans-serif",
+          wordWrap: true,
+          wordWrapWidth: 96,
+        }),
+      });
+      bubbleText.anchor.set(0.5, 1);
+      const bw = Math.min(bubbleText.width + 10, 106);
+      const bh = bubbleText.height + 6;
+      const by = -58;
+      const bubbleG = new Graphics();
+      bubbleG.roundRect(-bw / 2, by - bh, bw, bh, 4).fill(0xfff8e8);
+      bubbleG.roundRect(-bw / 2, by - bh, bw, bh, 4).stroke({
+        width: 1,
+        color: call.phase === "review" ? 0x34d399 : 0xf59e0b,
+        alpha: 0.55,
+      });
+      bubbleG.moveTo(-3, by).lineTo(0, by + 4).lineTo(3, by).fill(0xfff8e8);
+      dc.addChild(bubbleG);
+      bubbleText.position.set(0, by - 3);
+      dc.addChild(bubbleText);
+
+      dc.position.set(fromPos.x, fromPos.y);
+      dlLayer.addChild(dc);
+
+      deliveriesRef.current.push({
+        sprite: dc,
+        fromX: fromPos.x,
+        fromY: fromPos.y,
+        toX: seat.x,
+        toY: seat.y,
+        progress: 0,
+        speed: 0.0048,
+        type: "walk",
+      });
+
+      onCeoOfficeCallProcessed?.(call.id);
+    }
+  }, [ceoOfficeCalls, onCeoOfficeCallProcessed]);
 
   // ── CLI Usage Gauges ──
   const [cliStatus, setCliStatus] = useState<CliStatusMap | null>(null);

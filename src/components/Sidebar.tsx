@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Department, Agent, CompanySettings } from "../types";
 
-type View = "office" | "dashboard" | "tasks" | "settings";
+type View = "office" | "dashboard" | "tasks" | "skills" | "settings";
 
 interface SidebarProps {
   currentView: View;
@@ -14,6 +14,7 @@ interface SidebarProps {
 
 const NAV_ITEMS: { view: View; icon: string; label: string }[] = [
   { view: "office", icon: "🏢", label: "오피스" },
+  { view: "skills", icon: "📚", label: "문서고" },
   { view: "dashboard", icon: "📊", label: "대시보드" },
   { view: "tasks", icon: "📋", label: "업무 관리" },
   { view: "settings", icon: "⚙️", label: "설정" },
@@ -50,7 +51,7 @@ export default function Sidebar({
               className="w-8 h-8 object-contain"
               style={{ imageRendering: 'pixelated' }}
             />
-            <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-xs leading-none drop-shadow">👑</span>
+            <span className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-[10px] leading-none drop-shadow">👑</span>
           </div>
           {!collapsed && (
             <div className="overflow-hidden">

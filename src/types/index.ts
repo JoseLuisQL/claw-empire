@@ -140,6 +140,8 @@ export interface SubTask {
   assigned_agent_id: string | null;
   blocked_reason: string | null;
   cli_tool_use_id: string | null;
+  target_department_id?: string | null;
+  delegated_task_id?: string | null;
   created_at: number;
   completed_at: number | null;
 }
@@ -153,6 +155,8 @@ export type WSEventType =
   | 'cli_output'
   | 'cli_usage_update'
   | 'subtask_update'
+  | 'cross_dept_delivery'
+  | 'ceo_office_call'
   | 'connected';
 
 export interface WSEvent {
@@ -160,9 +164,28 @@ export interface WSEvent {
   payload: unknown;
 }
 
+// CLI Model info (rich model data from providers like Codex)
+export interface ReasoningLevelOption {
+  effort: string;       // "low" | "medium" | "high" | "xhigh"
+  description: string;
+}
+
+export interface CliModelInfo {
+  slug: string;
+  displayName?: string;
+  description?: string;
+  reasoningLevels?: ReasoningLevelOption[];
+  defaultReasoningLevel?: string;
+}
+
+export type CliModelsResponse = Record<string, CliModelInfo[]>;
+
 // Settings
 export interface ProviderModelConfig {
   model: string;
+  subModel?: string;  // 서브 에이전트(알바생) 모델 (claude, codex만 해당)
+  reasoningLevel?: string;  // Codex: "low"|"medium"|"high"|"xhigh"
+  subModelReasoningLevel?: string;  // 알바생 추론 레벨 (codex만 해당)
 }
 
 export interface CompanySettings {

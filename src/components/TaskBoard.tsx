@@ -643,19 +643,35 @@ function TaskCard({
           </button>
           {showSubtasks && taskSubtasks.length > 0 && (
             <div className="space-y-1 pl-1">
-              {taskSubtasks.map((st) => (
-                <div key={st.id} className="flex items-center gap-1.5 text-xs">
-                  <span>{SUBTASK_STATUS_ICON[st.status] || '\u23F3'}</span>
-                  <span className={`flex-1 truncate ${st.status === 'done' ? 'line-through text-slate-500' : 'text-slate-300'}`}>
-                    {st.title}
-                  </span>
-                  {st.status === 'blocked' && st.blocked_reason && (
-                    <span className="text-red-400 text-[10px] truncate max-w-[80px]" title={st.blocked_reason}>
-                      {st.blocked_reason}
+              {taskSubtasks.map((st) => {
+                const targetDept = st.target_department_id
+                  ? departments.find(d => d.id === st.target_department_id)
+                  : null;
+                return (
+                  <div key={st.id} className="flex items-center gap-1.5 text-xs">
+                    <span>{SUBTASK_STATUS_ICON[st.status] || '\u23F3'}</span>
+                    <span className={`flex-1 truncate ${st.status === 'done' ? 'line-through text-slate-500' : 'text-slate-300'}`}>
+                      {st.title}
                     </span>
-                  )}
-                </div>
-              ))}
+                    {targetDept && (
+                      <span
+                        className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium"
+                        style={{ backgroundColor: targetDept.color + '30', color: targetDept.color }}
+                      >
+                        {targetDept.icon} {targetDept.name_ko}
+                      </span>
+                    )}
+                    {st.delegated_task_id && st.status !== 'done' && (
+                      <span className="text-blue-400 shrink-0" title="위임됨">🔗</span>
+                    )}
+                    {st.status === 'blocked' && st.blocked_reason && (
+                      <span className="text-red-400 text-[10px] truncate max-w-[80px]" title={st.blocked_reason}>
+                        {st.blocked_reason}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -683,7 +699,11 @@ function TaskCard({
         )}
         {canStop && (
           <button
-            onClick={() => onStopTask(task.id)}
+            onClick={() => {
+              if (confirm(`"${task.title}" 작업을 중지할까요?\n\n경고: Stop 처리 시 해당 프로젝트 변경분은 롤백됩니다.`)) {
+                onStopTask(task.id);
+              }
+            }}
             title="Cancel task (취소)"
             className="flex items-center justify-center gap-1 rounded-lg bg-red-800 px-2 py-1.5 text-xs font-medium text-white transition hover:bg-red-700"
           >

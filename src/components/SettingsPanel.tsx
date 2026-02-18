@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { CompanySettings, CliStatusMap, CliProvider } from "../types";
+import type { CompanySettings, CliStatusMap, CliProvider, CliModelInfo } from "../types";
 import * as api from "../api";
 import type { OAuthStatus, OAuthConnectProvider, DeviceCodeStart } from "../api";
 import type { OAuthCallbackResult } from "../App";
@@ -13,13 +13,44 @@ interface SettingsPanelProps {
   onOauthResultClear?: () => void;
 }
 
-const CLI_INFO: Record<string, { label: string; icon: string }> = {
-  claude: { label: "Claude Code", icon: "🟣" },
-  codex: { label: "Codex CLI", icon: "🟢" },
-  gemini: { label: "Gemini CLI", icon: "🔵" },
+// SVG logos matching OfficeView CLI Usage icons
+function CliClaudeLogo() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 400 400" fill="none">
+      <path fill="#D97757" d="m124.011 241.251 49.164-27.585.826-2.396-.826-1.333h-2.396l-8.217-.506-28.09-.759-24.363-1.012-23.603-1.266-5.938-1.265L75 197.79l.574-3.661 4.994-3.358 7.153.625 15.808 1.079 23.722 1.637 17.208 1.012 25.493 2.649h4.049l.574-1.637-1.384-1.012-1.079-1.012-24.548-16.635-26.573-17.58-13.919-10.123-7.524-5.129-3.796-4.808-1.637-10.494 6.833-7.525 9.178.624 2.345.625 9.296 7.153 19.858 15.37 25.931 19.098 3.796 3.155 1.519-1.08.185-.759-1.704-2.851-14.104-25.493-15.049-25.931-6.698-10.747-1.772-6.445c-.624-2.649-1.08-4.876-1.08-7.592l7.778-10.561L144.729 75l10.376 1.383 4.37 3.797 6.445 14.745 10.443 23.215 16.197 31.566 4.741 9.364 2.53 8.672.945 2.649h1.637v-1.519l1.332-17.782 2.464-21.832 2.395-28.091.827-7.912 3.914-9.482 7.778-5.129 6.074 2.902 4.994 7.153-.692 4.623-2.969 19.301-5.821 30.234-3.796 20.245h2.21l2.531-2.53 10.241-13.599 17.208-21.511 7.593-8.537 8.857-9.431 5.686-4.488h10.747l7.912 11.76-3.543 12.147-11.067 14.037-9.178 11.895-13.16 17.714-8.216 14.172.759 1.131 1.957-.186 29.727-6.327 16.062-2.901 19.166-3.29 8.672 4.049.944 4.116-3.408 8.419-20.498 5.062-24.042 4.808-35.801 8.469-.439.321.506.624 16.13 1.519 6.9.371h16.888l31.448 2.345 8.217 5.433 4.926 6.647-.827 5.061-12.653 6.445-17.074-4.049-39.85-9.482-13.666-3.408h-1.889v1.131l11.388 11.135 20.87 18.845 26.133 24.295 1.333 6.006-3.357 4.741-3.543-.506-22.962-17.277-8.858-7.777-20.06-16.888H238.5v1.771l4.623 6.765 24.413 36.696 1.265 11.253-1.771 3.661-6.327 2.21-6.951-1.265-14.29-20.06-14.745-22.591-11.895-20.246-1.451.827-7.018 75.601-3.29 3.863-7.592 2.902-6.327-4.808-3.357-7.778 3.357-15.37 4.049-20.06 3.29-15.943 2.969-19.807 1.772-6.58-.118-.439-1.451.186-14.931 20.498-22.709 30.689-17.968 19.234-4.302 1.704-7.458-3.864.692-6.9 4.167-6.141 24.869-31.634 14.999-19.605 9.684-11.32-.068-1.637h-.573l-66.052 42.887-11.759 1.519-5.062-4.741.625-7.778 2.395-2.531 19.858-13.665-.068.067z"/>
+    </svg>
+  );
+}
+
+function CliChatGPTLogo() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M22.282 9.821a5.985 5.985 0 00-.516-4.91 6.046 6.046 0 00-6.51-2.9A6.065 6.065 0 0011.708.413a6.12 6.12 0 00-5.834 4.27 5.984 5.984 0 00-3.996 2.9 6.043 6.043 0 00.743 7.097 5.98 5.98 0 00.51 4.911 6.051 6.051 0 006.515 2.9A5.985 5.985 0 0013.192 24a6.116 6.116 0 005.84-4.27 5.99 5.99 0 003.997-2.9 6.056 6.056 0 00-.747-7.01zM13.192 22.784a4.474 4.474 0 01-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 00.392-.681v-6.737l2.02 1.168a.071.071 0 01.038.052v5.583a4.504 4.504 0 01-4.494 4.494zM3.658 18.607a4.47 4.47 0 01-.535-3.014l.142.085 4.783 2.759a.77.77 0 00.78 0l5.843-3.369v2.332a.08.08 0 01-.033.062L9.74 20.236a4.508 4.508 0 01-6.083-1.63zM2.328 7.847A4.477 4.477 0 014.68 5.879l-.002.159v5.52a.78.78 0 00.391.676l5.84 3.37-2.02 1.166a.08.08 0 01-.073.007L3.917 13.98a4.506 4.506 0 01-1.589-6.132zM19.835 11.94l-5.844-3.37 2.02-1.166a.08.08 0 01.073-.007l4.898 2.794a4.494 4.494 0 01-.69 8.109v-5.68a.79.79 0 00-.457-.68zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 00-.785 0L10.302 9.42V7.088a.08.08 0 01.033-.062l4.898-2.824a4.497 4.497 0 016.612 4.66v.054zM9.076 12.59l-2.02-1.164a.08.08 0 01-.038-.057V5.79A4.498 4.498 0 0114.392 3.2l-.141.08-4.778 2.758a.795.795 0 00-.392.681l-.005 5.87zm1.098-2.358L12 9.019l1.826 1.054v2.109L12 13.235l-1.826-1.054v-2.108z" fill="#10A37F"/>
+    </svg>
+  );
+}
+
+function CliGeminiLogo() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M12 0C12 6.627 6.627 12 0 12c6.627 0 12 5.373 12 12 0-6.627 5.373-12 12-12-6.627 0-12-5.373-12-12z" fill="url(#cli_gemini_grad)"/>
+      <defs>
+        <linearGradient id="cli_gemini_grad" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#4285F4"/>
+          <stop offset="1" stopColor="#886FBF"/>
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+const CLI_INFO: Record<string, { label: string; icon: React.ReactNode }> = {
+  claude: { label: "Claude Code", icon: <CliClaudeLogo /> },
+  codex: { label: "Codex CLI", icon: <CliChatGPTLogo /> },
+  gemini: { label: "Gemini CLI", icon: <CliGeminiLogo /> },
   opencode: { label: "OpenCode", icon: "⚪" },
-  copilot: { label: "GitHub Copilot", icon: "⚫" },
-  antigravity: { label: "Antigravity", icon: "🟡" },
+  copilot: { label: "GitHub Copilot", icon: "\uD83D\uDE80" },
+  antigravity: { label: "Antigravity", icon: "\uD83C\uDF0C" },
 };
 
 const OAUTH_INFO: Record<string, { label: string }> = {
@@ -71,6 +102,14 @@ export default function SettingsPanel({
   const [oauthLoading, setOauthLoading] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
+  // OAuth model selection state
+  const [models, setModels] = useState<Record<string, string[]> | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(false);
+
+  // CLI model selection state
+  const [cliModels, setCliModels] = useState<Record<string, CliModelInfo[]> | null>(null);
+  const [cliModelsLoading, setCliModelsLoading] = useState(false);
+
   // GitHub Device Code flow state
   const [deviceCode, setDeviceCode] = useState<DeviceCodeStart | null>(null);
   const [deviceStatus, setDeviceStatus] = useState<string | null>(null); // "polling" | "complete" | "error" | "expired"
@@ -98,6 +137,28 @@ export default function SettingsPanel({
         .finally(() => setOauthLoading(false));
     }
   }, [tab, oauthStatus]);
+
+  // Load CLI models when cli tab is visible
+  useEffect(() => {
+    if (tab !== "cli" || cliModels) return;
+    setCliModelsLoading(true);
+    api.getCliModels()
+      .then(setCliModels)
+      .catch(console.error)
+      .finally(() => setCliModelsLoading(false));
+  }, [tab, cliModels]);
+
+  // Load models when oauth tab is visible and has connected providers
+  useEffect(() => {
+    if (tab !== "oauth" || !oauthStatus || models) return;
+    const hasConnected = Object.values(oauthStatus.providers).some(p => p.connected);
+    if (!hasConnected) return;
+    setModelsLoading(true);
+    api.getOAuthModels()
+      .then(setModels)
+      .catch(console.error)
+      .finally(() => setModelsLoading(false));
+  }, [tab, oauthStatus, models]);
 
   // Auto-dismiss oauth result banner after 8 seconds
   useEffect(() => {
@@ -351,44 +412,208 @@ export default function SettingsPanel({
 
         {cliStatus ? (
           <div className="space-y-2">
-            {Object.entries(cliStatus).map(([provider, status]) => {
+            {Object.entries(cliStatus)
+              .filter(([provider]) => !["copilot", "antigravity"].includes(provider))
+              .map(([provider, status]) => {
               const info = CLI_INFO[provider];
+              const isReady = status.installed && status.authenticated;
+              const hasSubModel = provider === "claude" || provider === "codex";
+              const modelList = cliModels?.[provider] ?? [];
+              const currentModel = form.providerModelConfig?.[provider]?.model || "";
+              const currentSubModel = form.providerModelConfig?.[provider]?.subModel || "";
+              const currentReasoningLevel = form.providerModelConfig?.[provider]?.reasoningLevel || "";
+
+              // For Codex: find the selected model's reasoning levels
+              const selectedModel = modelList.find((m) => m.slug === currentModel);
+              const reasoningLevels = selectedModel?.reasoningLevels;
+              const defaultReasoning = selectedModel?.defaultReasoningLevel || "";
+
               return (
                 <div
                   key={provider}
-                  className="flex items-center gap-3 bg-slate-700/30 rounded-lg p-3"
+                  className="bg-slate-700/30 rounded-lg p-3 space-y-2"
                 >
-                  <span className="text-lg">{info?.icon ?? "❓"}</span>
-                  <div className="flex-1">
-                    <div className="text-sm text-white">
-                      {info?.label ?? provider}
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg">{info?.icon ?? "?"}</span>
+                    <div className="flex-1">
+                      <div className="text-sm text-white">
+                        {info?.label ?? provider}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {status.version ?? "미설치"}
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-500">
-                      {status.version ?? "미설치"}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        status.installed
-                          ? "bg-green-500/20 text-green-400"
-                          : "bg-slate-600/50 text-slate-400"
-                      }`}
-                    >
-                      {status.installed ? "설치됨" : "미설치"}
-                    </span>
-                    {status.installed && (
+                    <div className="flex gap-2">
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full ${
-                          status.authenticated
-                            ? "bg-blue-500/20 text-blue-400"
-                            : "bg-yellow-500/20 text-yellow-400"
+                          status.installed
+                            ? "bg-green-500/20 text-green-400"
+                            : "bg-slate-600/50 text-slate-400"
                         }`}
                       >
-                        {status.authenticated ? "인증됨" : "미인증"}
+                        {status.installed ? "설치됨" : "미설치"}
                       </span>
-                    )}
+                      {status.installed && (
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full ${
+                            status.authenticated
+                              ? "bg-blue-500/20 text-blue-400"
+                              : "bg-yellow-500/20 text-yellow-400"
+                          }`}
+                        >
+                          {status.authenticated ? "인증됨" : "미인증"}
+                        </span>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Model selection — only for installed+authenticated CLI providers */}
+                  {isReady && (
+                    <div className="pl-8 space-y-1.5">
+                      {/* Main model */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-400 shrink-0 w-20">
+                          {hasSubModel ? "메인 모델:" : "모델:"}
+                        </span>
+                        {cliModelsLoading ? (
+                          <span className="text-xs text-slate-500 animate-pulse">로딩 중...</span>
+                        ) : modelList.length > 0 ? (
+                          <select
+                            value={currentModel}
+                            onChange={(e) => {
+                              const newSlug = e.target.value;
+                              const newModel = modelList.find((m) => m.slug === newSlug);
+                              const prev = form.providerModelConfig?.[provider] || {};
+                              const newConfig = {
+                                ...form.providerModelConfig,
+                                [provider]: {
+                                  ...prev,
+                                  model: newSlug,
+                                  reasoningLevel: newModel?.defaultReasoningLevel || undefined,
+                                },
+                              };
+                              const newForm = { ...form, providerModelConfig: newConfig };
+                              setForm(newForm);
+                              onSave(newForm);
+                            }}
+                            className="flex-1 px-2 py-1 bg-slate-700/50 border border-slate-600 rounded text-white text-xs focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="">기본값</option>
+                            {modelList.map((m) => (
+                              <option key={m.slug} value={m.slug}>
+                                {m.displayName || m.slug}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-xs text-slate-500">모델 목록 없음</span>
+                        )}
+                      </div>
+
+                      {/* Reasoning level dropdown — Codex only */}
+                      {provider === "codex" && reasoningLevels && reasoningLevels.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 shrink-0 w-20">추론 레벨:</span>
+                          <select
+                            value={currentReasoningLevel || defaultReasoning}
+                            onChange={(e) => {
+                              const prev = form.providerModelConfig?.[provider] || { model: "" };
+                              const newConfig = {
+                                ...form.providerModelConfig,
+                                [provider]: { ...prev, reasoningLevel: e.target.value },
+                              };
+                              const newForm = { ...form, providerModelConfig: newConfig };
+                              setForm(newForm);
+                              onSave(newForm);
+                            }}
+                            className="flex-1 px-2 py-1 bg-slate-700/50 border border-slate-600 rounded text-white text-xs focus:outline-none focus:border-blue-500"
+                          >
+                            {reasoningLevels.map((rl) => (
+                              <option key={rl.effort} value={rl.effort}>
+                                {rl.effort} ({rl.description})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Sub-agent model — claude/codex only */}
+                      {hasSubModel && (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-400 shrink-0 w-20">알바생 모델:</span>
+                            {cliModelsLoading ? (
+                              <span className="text-xs text-slate-500 animate-pulse">로딩 중...</span>
+                            ) : modelList.length > 0 ? (
+                              <select
+                                value={currentSubModel}
+                                onChange={(e) => {
+                                  const newSlug = e.target.value;
+                                  const newSubModel = modelList.find((m) => m.slug === newSlug);
+                                  const prev = form.providerModelConfig?.[provider] || { model: "" };
+                                  const newConfig = {
+                                    ...form.providerModelConfig,
+                                    [provider]: {
+                                      ...prev,
+                                      subModel: newSlug,
+                                      subModelReasoningLevel: newSubModel?.defaultReasoningLevel || undefined,
+                                    },
+                                  };
+                                  const newForm = { ...form, providerModelConfig: newConfig };
+                                  setForm(newForm);
+                                  onSave(newForm);
+                                }}
+                                className="flex-1 px-2 py-1 bg-slate-700/50 border border-slate-600 rounded text-white text-xs focus:outline-none focus:border-blue-500"
+                              >
+                                <option value="">기본값</option>
+                                {modelList.map((m) => (
+                                  <option key={m.slug} value={m.slug}>
+                                    {m.displayName || m.slug}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-xs text-slate-500">모델 목록 없음</span>
+                            )}
+                          </div>
+
+                          {/* Sub-agent reasoning level — Codex only */}
+                          {(() => {
+                            const subSelected = modelList.find((m) => m.slug === currentSubModel);
+                            const subLevels = subSelected?.reasoningLevels;
+                            const subDefault = subSelected?.defaultReasoningLevel || "";
+                            const currentSubRL = form.providerModelConfig?.[provider]?.subModelReasoningLevel || "";
+                            if (provider !== "codex" || !subLevels || subLevels.length === 0) return null;
+                            return (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-slate-400 shrink-0 w-20">알바 추론:</span>
+                                <select
+                                  value={currentSubRL || subDefault}
+                                  onChange={(e) => {
+                                    const prev = form.providerModelConfig?.[provider] || { model: "" };
+                                    const newConfig = {
+                                      ...form.providerModelConfig,
+                                      [provider]: { ...prev, subModelReasoningLevel: e.target.value },
+                                    };
+                                    const newForm = { ...form, providerModelConfig: newConfig };
+                                    setForm(newForm);
+                                    onSave(newForm);
+                                  }}
+                                  className="flex-1 px-2 py-1 bg-slate-700/50 border border-slate-600 rounded text-white text-xs focus:outline-none focus:border-blue-500"
+                                >
+                                  {subLevels.map((rl) => (
+                                    <option key={rl.effort} value={rl.effort}>
+                                      {rl.effort} ({rl.description})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            );
+                          })()}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -401,6 +626,7 @@ export default function SettingsPanel({
 
         <p className="text-xs text-slate-500">
           각 에이전트의 CLI 도구는 오피스에서 에이전트 클릭 후 변경할 수 있습니다.
+          Copilot/Antigravity 모델은 OAuth 탭에서 설정합니다.
         </p>
       </section>
       )}
@@ -556,6 +782,39 @@ export default function SettingsPanel({
                             )}
                           </div>
                         )}
+                        {/* Model selection dropdown */}
+                        {(() => {
+                          const modelKey = provider === "github-copilot" ? "copilot" : provider === "antigravity" ? "antigravity" : null;
+                          if (!modelKey) return null;
+                          const modelList = models?.[modelKey];
+                          const currentModel = form.providerModelConfig?.[modelKey]?.model || "";
+                          return (
+                            <div className="flex items-center gap-2 pt-1">
+                              <span className="text-xs text-slate-400 shrink-0">모델:</span>
+                              {modelsLoading ? (
+                                <span className="text-xs text-slate-500 animate-pulse">로딩 중...</span>
+                              ) : modelList && modelList.length > 0 ? (
+                                <select
+                                  value={currentModel}
+                                  onChange={(e) => {
+                                    const newConfig = { ...form.providerModelConfig, [modelKey]: { model: e.target.value } };
+                                    const newForm = { ...form, providerModelConfig: newConfig };
+                                    setForm(newForm);
+                                    onSave(newForm);
+                                  }}
+                                  className="flex-1 px-2 py-1 bg-slate-700/50 border border-slate-600 rounded text-white text-xs focus:outline-none focus:border-blue-500"
+                                >
+                                  {!currentModel && <option value="">선택하세요...</option>}
+                                  {modelList.map((m) => (
+                                    <option key={m} value={m}>{m}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="text-xs text-slate-500">모델 목록 없음</span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}

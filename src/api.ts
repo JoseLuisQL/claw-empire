@@ -2,7 +2,8 @@ import type {
   Department, Agent, Task, TaskLog, Message,
   CliStatusMap, CompanyStats, CompanySettings,
   TaskStatus, TaskType, CliProvider, AgentRole,
-  MessageType, ReceiverType, SubTask
+  MessageType, ReceiverType, SubTask,
+  CliModelInfo
 } from './types';
 
 const base = '';
@@ -260,6 +261,12 @@ export async function getOAuthModels(): Promise<Record<string, string[]>> {
   return j.models;
 }
 
+// CLI Models (for CLI provider model selection)
+export async function getCliModels(): Promise<Record<string, CliModelInfo[]>> {
+  const j = await request<{ models: Record<string, CliModelInfo[]> }>('/api/cli-models');
+  return j.models;
+}
+
 // Git Worktree management
 export interface TaskDiffResult {
   ok: boolean;
@@ -317,6 +324,19 @@ export async function getCliUsage(): Promise<{ ok: boolean; usage: Record<string
 
 export async function refreshCliUsage(): Promise<{ ok: boolean; usage: Record<string, CliUsageEntry> }> {
   return post('/api/cli-usage/refresh') as Promise<{ ok: boolean; usage: Record<string, CliUsageEntry> }>;
+}
+
+// Skills
+export interface SkillEntry {
+  rank: number;
+  name: string;
+  repo: string;
+  installs: number;
+}
+
+export async function getSkills(): Promise<SkillEntry[]> {
+  const j = await request<{ skills: SkillEntry[] }>('/api/skills');
+  return j.skills;
 }
 
 // SubTasks

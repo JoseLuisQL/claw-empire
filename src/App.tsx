@@ -7,6 +7,7 @@ import TaskBoard from "./components/TaskBoard";
 import AgentDetail from "./components/AgentDetail";
 import SettingsPanel from "./components/SettingsPanel";
 import TerminalPanel from "./components/TerminalPanel";
+import SkillsLibrary from "./components/SkillsLibrary";
 import { useWebSocket } from "./hooks/useWebSocket";
 import type {
   Department,
@@ -34,7 +35,14 @@ export interface CrossDeptDelivery {
   toAgentId: string;
 }
 
-type View = "office" | "dashboard" | "tasks" | "settings";
+export interface CeoOfficeCall {
+  id: string;
+  fromAgentId: string;
+  seatIndex: number;
+  phase: "kickoff" | "review";
+}
+
+type View = "office" | "dashboard" | "tasks" | "skills" | "settings";
 
 export interface OAuthCallbackResult {
   provider: string | null;
@@ -62,6 +70,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [unreadAgentIds, setUnreadAgentIds] = useState<Set<string>>(new Set());
   const [crossDeptDeliveries, setCrossDeptDeliveries] = useState<CrossDeptDelivery[]>([]);
+  const [ceoOfficeCalls, setCeoOfficeCalls] = useState<CeoOfficeCall[]>([]);
   const [oauthResult, setOauthResult] = useState<OAuthCallbackResult | null>(null);
 
   // Ref to track currently open chat (avoids stale closures in WebSocket handlers)
@@ -187,6 +196,23 @@ export default function App() {
         setCrossDeptDeliveries((prev) => [
           ...prev,
           { id: `cd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, fromAgentId: p.from_agent_id, toAgentId: p.to_agent_id },
+        ]);
+      }),
+      on("ceo_office_call", (payload: unknown) => {
+        const p = payload as {
+          from_agent_id: string;
+          seat_index?: number;
+          phase?: "kickoff" | "review";
+        };
+        if (!p.from_agent_id) return;
+        setCeoOfficeCalls((prev) => [
+          ...prev,
+          {
+            id: `ceo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            fromAgentId: p.from_agent_id,
+            seatIndex: p.seat_index ?? 0,
+            phase: p.phase ?? "kickoff",
+          },
         ]);
       }),
       on("subtask_update", (payload: unknown) => {
@@ -446,6 +472,7 @@ export default function App() {
               {view === "office" && "🏢 오피스"}
               {view === "dashboard" && "📊 대시보드"}
               {view === "tasks" && "📋 업무 관리"}
+              {view === "skills" && "📚 문서고"}
               {view === "settings" && "⚙️ 설정"}
             </h1>
           </div>
@@ -487,6 +514,10 @@ export default function App() {
               onCrossDeptDeliveryProcessed={(id) =>
                 setCrossDeptDeliveries((prev) => prev.filter((d) => d.id !== id))
               }
+              ceoOfficeCalls={ceoOfficeCalls}
+              onCeoOfficeCallProcessed={(id) =>
+                setCeoOfficeCalls((prev) => prev.filter((d) => d.id !== id))
+              }
               onSelectAgent={(a) => setSelectedAgent(a)}
               onSelectDepartment={(dept) => {
                 const leader = agents.find(
@@ -525,6 +556,8 @@ export default function App() {
               onOpenTerminal={(id) => setTerminalTaskId(id)}
             />
           )}
+
+          {view === "skills" && <SkillsLibrary />}
 
           {view === "settings" && (
             <SettingsPanel
@@ -569,6 +602,7 @@ export default function App() {
           department={departments.find(
             (d) => d.id === selectedAgent.department_id
           )}
+          departments={departments}
           tasks={tasks}
           subAgents={subAgents}
           subtasks={subtasks}
