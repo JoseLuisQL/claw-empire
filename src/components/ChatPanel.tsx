@@ -468,7 +468,7 @@ export function ChatPanel({
           )}
           {mode === 'report' && (
             <p className="text-xs text-emerald-400">
-              📊 {tr('보고 요청 모드 — 에이전트에게 현황 보고를 요청합니다', 'Report mode - request a status update', 'レポート依頼モード — エージェントに状況報告を依頼します', '报告请求模式 — 请求代理提交状态报告')}
+              📊 {tr('보고 요청 모드 — 보고서/발표자료 작성 작업을 요청합니다', 'Report mode - request report/deck authoring', 'レポート依頼モード — レポート/資料作成を依頼します', '报告请求模式 — 请求撰写报告/演示资料')}
             </p>
           )}
         </div>

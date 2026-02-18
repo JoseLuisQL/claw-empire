@@ -48,7 +48,7 @@ export interface CeoOfficeCall {
   fromAgentId: string;
   seatIndex: number;
   phase: "kickoff" | "review";
-  action?: "arrive" | "speak";
+  action?: "arrive" | "speak" | "dismiss";
   line?: string;
 }
 
@@ -258,7 +258,7 @@ export default function App() {
           from_agent_id: string;
           seat_index?: number;
           phase?: "kickoff" | "review";
-          action?: "arrive" | "speak";
+          action?: "arrive" | "speak" | "dismiss";
           line?: string;
         };
         if (!p.from_agent_id) return;

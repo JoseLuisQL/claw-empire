@@ -38,7 +38,7 @@ interface CeoOfficeCall {
   fromAgentId: string;
   seatIndex: number;
   phase: "kickoff" | "review";
-  action?: "arrive" | "speak";
+  action?: "arrive" | "speak" | "dismiss";
   line?: string;
 }
 
@@ -1950,6 +1950,19 @@ export default function OfficeView({
       if (processedCeoOfficeRef.current.has(call.id)) continue;
       processedCeoOfficeRef.current.add(call.id);
 
+      if (call.action === "dismiss") {
+        for (let i = deliveriesRef.current.length - 1; i >= 0; i--) {
+          const d = deliveriesRef.current[i];
+          if (d.agentId === call.fromAgentId && d.holdAtSeat) {
+            d.sprite.parent?.removeChild(d.sprite);
+            d.sprite.destroy({ children: true });
+            deliveriesRef.current.splice(i, 1);
+          }
+        }
+        onCeoOfficeCallProcessed?.(call.id);
+        continue;
+      }
+
       const seats = ceoMeetingSeatsRef.current;
       const seat = seats.length > 0 ? seats[call.seatIndex % seats.length] : null;
       if (!seat) {
@@ -2029,7 +2042,7 @@ export default function OfficeView({
         type: "walk",
         agentId: call.fromAgentId,
         holdAtSeat: true,
-        holdUntil: Date.now() + 95_000,
+        holdUntil: Date.now() + 600_000,
       });
 
       onCeoOfficeCallProcessed?.(call.id);

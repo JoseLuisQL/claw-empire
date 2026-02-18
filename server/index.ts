@@ -1128,7 +1128,7 @@ function completeSubtaskFromCli(toolUseId: string): void {
   broadcast("subtask_update", subtask);
 }
 
-function seedApprovedPlanSubtasks(taskId: string, ownerDeptId: string | null): void {
+function seedApprovedPlanSubtasks(taskId: string, ownerDeptId: string | null, planningNotes: string[] = []): void {
   const existing = db.prepare(
     "SELECT COUNT(*) as cnt FROM subtasks WHERE task_id = ?"
   ).get(taskId) as { cnt: number };
@@ -1151,6 +1151,17 @@ function seedApprovedPlanSubtasks(taskId: string, ownerDeptId: string | null): v
 
   const now = nowMs();
   const baseAssignee = task.assigned_agent_id;
+  const uniquePlanNotes: string[] = [];
+  const planSeen = new Set<string>();
+  for (const note of planningNotes) {
+    const normalized = note.replace(/\s+/g, " ").trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (planSeen.has(key)) continue;
+    planSeen.add(key);
+    uniquePlanNotes.push(normalized);
+    if (uniquePlanNotes.length >= 8) break;
+  }
 
   const items: Array<{
     title: string;
@@ -1162,16 +1173,16 @@ function seedApprovedPlanSubtasks(taskId: string, ownerDeptId: string | null): v
   }> = [
     {
       title: pickL(l(
-        ["승인안 상세 실행 계획 확정"],
-        ["Finalize detailed execution plan from approved proposal"],
-        ["承認案の詳細実行計画を確定"],
-        ["确定批准方案的详细执行计划"],
+        ["Planned 상세 실행 계획 확정"],
+        ["Finalize detailed execution plan from planned meeting"],
+        ["Planned会議の詳細実行計画を確定"],
+        ["确定 Planned 会议的详细执行计划"],
       ), lang),
       description: pickL(l(
-        [`Approved 기획안 기준으로 상세 작업 순서/산출물 기준을 확정합니다. (${task.title})`],
-        [`Finalize detailed task sequence and deliverable criteria based on the approved plan. (${task.title})`],
-        [`承認済み企画案を基準に、詳細な作業順序と成果物基準を確定します。(${task.title})`],
-        [`基于已批准方案，确定详细任务顺序与交付物标准。（${task.title}）`],
+        [`Planned 회의 기준으로 상세 작업 순서/산출물 기준을 확정합니다. (${task.title})`],
+        [`Finalize detailed task sequence and deliverable criteria from the planned meeting. (${task.title})`],
+        [`Planned会議を基準に、詳細な作業順序と成果物基準を確定します。(${task.title})`],
+        [`基于 Planned 会议，确定详细任务顺序与交付物标准。（${task.title}）`],
       ), lang),
       status: "pending",
       assignedAgentId: baseAssignee,
@@ -1179,6 +1190,43 @@ function seedApprovedPlanSubtasks(taskId: string, ownerDeptId: string | null): v
       targetDepartmentId: null,
     },
   ];
+
+  for (const note of uniquePlanNotes) {
+    const detail = note.replace(/^[\s\-*0-9.)]+/, "").trim();
+    if (!detail) continue;
+    const afterColon = detail.includes(":") ? detail.split(":").slice(1).join(":").trim() : detail;
+    const titleCore = (afterColon || detail).slice(0, 56).trim();
+    const clippedTitle = titleCore.length > 54 ? `${titleCore.slice(0, 53).trimEnd()}…` : titleCore;
+    const targetDeptId = analyzeSubtaskDepartment(detail, baseDeptId);
+    const targetDeptName = targetDeptId ? getDeptName(targetDeptId) : "";
+    const targetLeader = targetDeptId ? findTeamLeader(targetDeptId) : null;
+
+    items.push({
+      title: pickL(l(
+        [`[보완계획] ${clippedTitle || "추가 보완 항목"}`],
+        [`[Plan Item] ${clippedTitle || "Additional improvement item"}`],
+        [`[補完計画] ${clippedTitle || "追加補完項目"}`],
+        [`[计划项] ${clippedTitle || "补充改进事项"}`],
+      ), lang),
+      description: pickL(l(
+        [`Planned 회의 보완점을 실행 계획으로 반영합니다: ${detail}`],
+        [`Convert this planned-meeting improvement note into an executable task: ${detail}`],
+        [`Planned会議の補完項目を実行計画へ反映します: ${detail}`],
+        [`将 Planned 会议补充项转为可执行任务：${detail}`],
+      ), lang),
+      status: targetDeptId ? "blocked" : "pending",
+      assignedAgentId: targetDeptId ? (targetLeader?.id ?? null) : baseAssignee,
+      blockedReason: targetDeptId
+        ? pickL(l(
+          [`${targetDeptName} 협업 대기`],
+          [`Waiting for ${targetDeptName} collaboration`],
+          [`${targetDeptName}の協業待ち`],
+          [`等待${targetDeptName}协作`],
+        ), lang)
+        : null,
+      targetDepartmentId: targetDeptId,
+    });
+  }
 
   for (const deptId of relatedDepts) {
     const deptName = getDeptName(deptId);
@@ -1191,10 +1239,10 @@ function seedApprovedPlanSubtasks(taskId: string, ownerDeptId: string | null): v
         [`[协作] 编写${deptName}交付物`],
       ), lang),
       description: pickL(l(
-        [`Approved 기획안 기준 ${deptName} 담당 결과물을 작성/공유합니다.`],
-        [`Create and share the ${deptName}-owned deliverable based on the approved plan.`],
-        [`承認済み企画案を基準に、${deptName}担当の成果物を作成・共有します。`],
-        [`基于已批准方案，完成并共享${deptName}负责的交付物。`],
+        [`Planned 회의 기준 ${deptName} 담당 결과물을 작성/공유합니다.`],
+        [`Create and share the ${deptName}-owned deliverable based on the planned meeting.`],
+        [`Planned会議を基準に、${deptName}担当の成果物を作成・共有します。`],
+        [`基于 Planned 会议，完成并共享${deptName}负责的交付物。`],
       ), lang),
       status: "blocked",
       assignedAgentId: crossLeader?.id ?? null,
@@ -1246,12 +1294,16 @@ function seedApprovedPlanSubtasks(taskId: string, ownerDeptId: string | null): v
     broadcast("subtask_update", db.prepare("SELECT * FROM subtasks WHERE id = ?").get(sid));
   }
 
-  appendTaskLog(taskId, "system", `Approved plan seeded ${items.length} subtasks (cross-dept: ${relatedDepts.length})`);
+  appendTaskLog(
+    taskId,
+    "system",
+    `Planned meeting seeded ${items.length} subtasks (plan-notes: ${uniquePlanNotes.length}, cross-dept: ${relatedDepts.length})`,
+  );
   notifyCeo(pickL(l(
-    [`'${task.title}' 승인안 기준 SubTask ${items.length}건을 생성하고 담당자/유관부서 협업을 배정했습니다.`],
-    [`Created ${items.length} subtasks from the approved plan for '${task.title}' and assigned owners/cross-department collaboration.`],
-    [`'${task.title}' の承認案に基づき SubTask を${items.length}件作成し、担当者と関連部門協業を割り当てました。`],
-    [`已基于'${task.title}'的批准方案创建${items.length}个 SubTask，并分配负责人及跨部门协作。`],
+    [`'${task.title}' Planned 회의 결과 기준 SubTask ${items.length}건을 생성하고 담당자/유관부서 협업을 배정했습니다.`],
+    [`Created ${items.length} subtasks from the planned-meeting output for '${task.title}' and assigned owners/cross-department collaboration.`],
+    [`'${task.title}' のPlanned会議結果を基準に SubTask を${items.length}件作成し、担当者と関連部門協業を割り当てました。`],
+    [`已基于'${task.title}'的 Planned 会议结果创建${items.length}个 SubTask，并分配负责人及跨部门协作。`],
   ), lang), taskId);
 }
 
@@ -2366,6 +2418,28 @@ const delegatedTaskToSubtask = new Map<string, string>();
 const reviewRoundState = new Map<string, number>();
 const reviewInFlight = new Set<string>();
 const meetingPresenceUntil = new Map<string, number>();
+const MAX_REVIEW_APPROVAL_ROUNDS = 3;
+
+function getTaskStatusById(taskId: string): string | null {
+  const row = db.prepare("SELECT status FROM tasks WHERE id = ?").get(taskId) as { status: string } | undefined;
+  return row?.status ?? null;
+}
+
+function isTaskWorkflowInterrupted(taskId: string): boolean {
+  const status = getTaskStatusById(taskId);
+  if (!status) return true; // deleted
+  if (stopRequestedTasks.has(taskId)) return true;
+  return status === "cancelled" || status === "pending" || status === "done" || status === "inbox";
+}
+
+function clearTaskWorkflowState(taskId: string): void {
+  crossDeptNextCallbacks.delete(taskId);
+  subtaskDelegationCallbacks.delete(taskId);
+  reviewInFlight.delete(taskId);
+  reviewInFlight.delete(`planned:${taskId}`);
+  reviewRoundState.delete(taskId);
+  reviewRoundState.delete(`planned:${taskId}`);
+}
 
 function startProgressTimer(taskId: string, taskTitle: string, departmentId: string | null): void {
   // Send progress report every 5min for long-running tasks
@@ -2575,6 +2649,89 @@ function finishMeetingMinutes(
   ).run(status, nowMs(), meetingId);
 }
 
+function collectRevisionMemoItems(transcript: MeetingTranscriptEntry[], maxItems = 8): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const isIssue = (text: string) => (
+    /보완|보류|리스크|미첨부|미구축|미완료|불가|부족|0%|hold|revise|revision|required|pending|risk|block|missing|not attached|incomplete|保留|修正|补充|未完成|未附|风险/i
+  ).test(text);
+
+  for (const row of transcript) {
+    const base = row.content.replace(/\s+/g, " ").trim();
+    if (!base || !isIssue(base)) continue;
+    const note = `${row.department} ${row.speaker}: ${base}`;
+    const normalized = note.toLowerCase();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(note.length > 220 ? `${note.slice(0, 219).trimEnd()}…` : note);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+function collectPlannedActionItems(transcript: MeetingTranscriptEntry[], maxItems = 10): string[] {
+  const riskFirst = collectRevisionMemoItems(transcript, maxItems);
+  if (riskFirst.length > 0) return riskFirst;
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const row of transcript) {
+    const base = row.content.replace(/\s+/g, " ").trim();
+    if (!base || base.length < 8) continue;
+    const note = `${row.department} ${row.speaker}: ${base}`;
+    const normalized = note.toLowerCase();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(note.length > 220 ? `${note.slice(0, 219).trimEnd()}…` : note);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+function appendTaskProjectMemo(
+  taskId: string,
+  phase: "planned" | "review",
+  round: number,
+  notes: string[],
+  lang: string,
+): void {
+  const current = db.prepare("SELECT description, title FROM tasks WHERE id = ?").get(taskId) as {
+    description: string | null;
+    title: string;
+  } | undefined;
+  if (!current) return;
+
+  const stamp = new Date().toISOString().replace("T", " ").slice(0, 16);
+  const phaseLabel = phase === "planned" ? "Planned Kickoff" : "Review";
+  const header = lang === "en"
+    ? `[PROJECT MEMO] ${phaseLabel} round ${round} unresolved improvement items (${stamp})`
+    : lang === "ja"
+      ? `[PROJECT MEMO] ${phaseLabel} ラウンド ${round} 未解決の補完項目 (${stamp})`
+      : lang === "zh"
+        ? `[PROJECT MEMO] ${phaseLabel} 第 ${round} 轮未解决改进项 (${stamp})`
+        : `[PROJECT MEMO] ${phaseLabel} 라운드 ${round} 미해결 보완 항목 (${stamp})`;
+  const fallbackLine = lang === "en"
+    ? "- No explicit issue line captured; follow-up verification is still required."
+    : lang === "ja"
+      ? "- 明示的な課題行は抽出되지ませんでしたが、後続検証は継続が必要です。"
+      : lang === "zh"
+        ? "- 未捕获到明确问题行，但后续验证仍需继续。"
+        : "- 명시적 이슈 문장을 추출하지 못했지만 후속 검증은 계속 필요합니다.";
+  const body = notes.length > 0
+    ? notes.map((note) => `- ${note}`).join("\n")
+    : fallbackLine;
+
+  const block = `${header}\n${body}`;
+  const existing = current.description ?? "";
+  const next = existing ? `${existing}\n\n${block}` : block;
+  const trimmed = next.length > 18_000 ? next.slice(next.length - 18_000) : next;
+
+  db.prepare("UPDATE tasks SET description = ?, updated_at = ? WHERE id = ?")
+    .run(trimmed, nowMs(), taskId);
+  appendTaskLog(taskId, "system", `Project memo appended (${phase} round ${round}, items=${notes.length})`);
+  broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
+}
+
 function markAgentInMeeting(agentId: string, holdMs = 90_000): void {
   meetingPresenceUntil.set(agentId, nowMs() + holdMs);
   const row = db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId) as AgentRow | undefined;
@@ -2608,6 +2765,16 @@ function callLeadersToCeoOffice(taskId: string, leaders: AgentRow[], phase: "kic
   });
 }
 
+function dismissLeadersFromCeoOffice(taskId: string, leaders: AgentRow[]): void {
+  leaders.slice(0, 6).forEach((leader) => {
+    broadcast("ceo_office_call", {
+      from_agent_id: leader.id,
+      task_id: taskId,
+      action: "dismiss",
+    });
+  });
+}
+
 function emitMeetingSpeech(
   agentId: string,
   seatIndex: number,
@@ -2637,13 +2804,13 @@ function startReviewConsensusMeeting(
 
   void (async () => {
     let meetingId: string | null = null;
+    const leaders = getTaskReviewLeaders(taskId, departmentId);
+    if (leaders.length === 0) {
+      reviewInFlight.delete(taskId);
+      onApproved();
+      return;
+    }
     try {
-      const leaders = getTaskReviewLeaders(taskId, departmentId);
-      if (leaders.length === 0) {
-        reviewInFlight.delete(taskId);
-        onApproved();
-        return;
-      }
 
       const round = (reviewRoundState.get(taskId) ?? 0) + 1;
       reviewRoundState.set(taskId, round);
@@ -2671,6 +2838,17 @@ function startReviewConsensusMeeting(
       ).test(content);
       meetingId = beginMeetingMinutes(taskId, "review", round, taskTitle);
       let minuteSeq = 1;
+      const abortIfInactive = (): boolean => {
+        if (!isTaskWorkflowInterrupted(taskId)) return false;
+        const status = getTaskStatusById(taskId);
+        if (meetingId) finishMeetingMinutes(meetingId, "failed");
+        dismissLeadersFromCeoOffice(taskId, leaders);
+        clearTaskWorkflowState(taskId);
+        if (status) {
+          appendTaskLog(taskId, "system", `Review meeting aborted due to task state change (${status})`);
+        }
+        return true;
+      };
 
       const pushTranscript = (leader: AgentRow, content: string) => {
         transcript.push({
@@ -2681,6 +2859,7 @@ function startReviewConsensusMeeting(
         });
       };
       const speak = (leader: AgentRow, messageType: string, receiverType: string, receiverId: string | null, content: string) => {
+        if (isTaskWorkflowInterrupted(taskId)) return;
         sendAgentMessage(leader, content, messageType, receiverType, receiverId, taskId);
         const seatIndex = seatIndexByAgent.get(leader.id) ?? 0;
         emitMeetingSpeech(leader.id, seatIndex, "review", taskId, content);
@@ -2690,6 +2869,7 @@ function startReviewConsensusMeeting(
         }
       };
 
+      if (abortIfInactive()) return;
       callLeadersToCeoOffice(taskId, leaders, "review");
       notifyCeo(pickL(l(
         [`[CEO OFFICE] '${taskTitle}' 리뷰 라운드 ${round} 시작. 팀장 의견 수집 및 상호 승인 진행합니다.`],
@@ -2709,11 +2889,14 @@ function startReviewConsensusMeeting(
         lang,
       });
       const openingRun = await runAgentOneShot(planningLeader, openingPrompt, oneShotOptions);
+      if (abortIfInactive()) return;
       const openingText = chooseSafeReply(openingRun, lang, "opening", planningLeader);
       speak(planningLeader, "chat", "all", null, openingText);
       await sleepMs(randomDelay(720, 1300));
+      if (abortIfInactive()) return;
 
       for (const leader of otherLeaders) {
+        if (abortIfInactive()) return;
         const feedbackPrompt = buildMeetingPrompt(leader, {
           meetingType: "review",
           round,
@@ -2725,6 +2908,7 @@ function startReviewConsensusMeeting(
           lang,
         });
         const feedbackRun = await runAgentOneShot(leader, feedbackPrompt, oneShotOptions);
+        if (abortIfInactive()) return;
         const feedbackText = chooseSafeReply(feedbackRun, lang, "feedback", leader);
         speak(leader, "chat", "agent", planningLeader.id, feedbackText);
         if (wantsRevision(feedbackText)) {
@@ -2732,9 +2916,11 @@ function startReviewConsensusMeeting(
           if (!reviseOwner) reviseOwner = leader;
         }
         await sleepMs(randomDelay(650, 1180));
+        if (abortIfInactive()) return;
       }
 
       if (otherLeaders.length === 0) {
+        if (abortIfInactive()) return;
         const soloPrompt = buildMeetingPrompt(planningLeader, {
           meetingType: "review",
           round,
@@ -2746,9 +2932,11 @@ function startReviewConsensusMeeting(
           lang,
         });
         const soloRun = await runAgentOneShot(planningLeader, soloPrompt, oneShotOptions);
+        if (abortIfInactive()) return;
         const soloText = chooseSafeReply(soloRun, lang, "feedback", planningLeader);
         speak(planningLeader, "chat", "all", null, soloText);
         await sleepMs(randomDelay(620, 980));
+        if (abortIfInactive()) return;
       }
 
       const summaryPrompt = buildMeetingPrompt(planningLeader, {
@@ -2766,11 +2954,14 @@ function startReviewConsensusMeeting(
         lang,
       });
       const summaryRun = await runAgentOneShot(planningLeader, summaryPrompt, oneShotOptions);
+      if (abortIfInactive()) return;
       const summaryText = chooseSafeReply(summaryRun, lang, "summary", planningLeader);
       speak(planningLeader, "report", "all", null, summaryText);
       await sleepMs(randomDelay(680, 1120));
+      if (abortIfInactive()) return;
 
       for (const leader of leaders) {
+        if (abortIfInactive()) return;
         const isReviseOwner = reviseOwner?.id === leader.id;
         const approvalPrompt = buildMeetingPrompt(leader, {
           meetingType: "review",
@@ -2787,6 +2978,7 @@ function startReviewConsensusMeeting(
           lang,
         });
         const approvalRun = await runAgentOneShot(leader, approvalPrompt, oneShotOptions);
+        if (abortIfInactive()) return;
         const approvalText = chooseSafeReply(approvalRun, lang, "approval", leader);
         speak(leader, "status_update", "all", null, approvalText);
         if (wantsRevision(approvalText)) {
@@ -2794,12 +2986,35 @@ function startReviewConsensusMeeting(
           if (!reviseOwner) reviseOwner = leader;
         }
         await sleepMs(randomDelay(420, 860));
+        if (abortIfInactive()) return;
       }
 
       await sleepMs(randomDelay(540, 920));
+      if (abortIfInactive()) return;
 
       if (needsRevision) {
         appendTaskLog(taskId, "system", `Review consensus round ${round}: revision requested`);
+        const memoItems = collectRevisionMemoItems(transcript);
+        if (round >= MAX_REVIEW_APPROVAL_ROUNDS) {
+          appendTaskProjectMemo(taskId, "review", round, memoItems, lang);
+          appendTaskLog(
+            taskId,
+            "system",
+            `Review consensus round ${round}: round cap reached, proceeding with memo (${memoItems.length} items)`,
+          );
+          notifyCeo(pickL(l(
+            [`[CEO OFFICE] '${taskTitle}' 리뷰 라운드가 ${MAX_REVIEW_APPROVAL_ROUNDS}회에 도달했습니다. 미해결 보완사항을 프로젝트 메모에 기록하고 현재 결과 기준으로 진행합니다.`],
+            [`[CEO OFFICE] '${taskTitle}' reached ${MAX_REVIEW_APPROVAL_ROUNDS} review rounds. Unresolved items were recorded in the project memo and the workflow will proceed with current results.`],
+            [`[CEO OFFICE] '${taskTitle}' はレビュー${MAX_REVIEW_APPROVAL_ROUNDS}ラウンドに達しました。未解決項目をプロジェクトメモへ記録し、現時点の結果で進行します。`],
+            [`[CEO OFFICE] '${taskTitle}' 评审已达到 ${MAX_REVIEW_APPROVAL_ROUNDS} 轮。未解决项已写入项目备忘录，流程将按当前结果继续。`],
+          ), lang), taskId);
+          if (meetingId) finishMeetingMinutes(meetingId, "completed");
+          dismissLeadersFromCeoOffice(taskId, leaders);
+          reviewRoundState.delete(taskId);
+          reviewInFlight.delete(taskId);
+          onApproved();
+          return;
+        }
         notifyCeo(pickL(l(
           [`[CEO OFFICE] '${taskTitle}' 승인 보류. 기획팀이 보완안 반영 후 재승인 라운드를 시작합니다.`],
           [`[CEO OFFICE] '${taskTitle}' approval is on hold. Planning will reflect revisions and start a re-approval round.`],
@@ -2812,6 +3027,7 @@ function startReviewConsensusMeeting(
         broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
 
         await sleepMs(2600);
+        if (abortIfInactive()) return;
         const t2 = nowMs();
         db.prepare("UPDATE tasks SET status = 'review', updated_at = ? WHERE id = ?").run(t2, taskId);
         appendTaskLog(taskId, "system", `Review consensus round ${round}: revision reflected, back to review`);
@@ -2823,6 +3039,7 @@ function startReviewConsensusMeeting(
           [`[CEO OFFICE] '${taskTitle}'修订已完成，开始重新评审与再次审批。`],
         ), lang), taskId);
         if (meetingId) finishMeetingMinutes(meetingId, "revision_requested");
+        dismissLeadersFromCeoOffice(taskId, leaders);
         reviewInFlight.delete(taskId);
         finishReview(taskId, taskTitle);
         return;
@@ -2836,9 +3053,17 @@ function startReviewConsensusMeeting(
         [`[CEO OFFICE] '${taskTitle}'已获全体负责人批准，进入 Done 阶段。`],
       ), lang), taskId);
       if (meetingId) finishMeetingMinutes(meetingId, "completed");
+      dismissLeadersFromCeoOffice(taskId, leaders);
+      reviewRoundState.delete(taskId);
       reviewInFlight.delete(taskId);
       onApproved();
     } catch (err: any) {
+      if (isTaskWorkflowInterrupted(taskId)) {
+        if (meetingId) finishMeetingMinutes(meetingId, "failed");
+        dismissLeadersFromCeoOffice(taskId, leaders);
+        clearTaskWorkflowState(taskId);
+        return;
+      }
       const msg = err?.message ? String(err.message) : String(err);
       appendTaskLog(taskId, "error", `Review consensus meeting error: ${msg}`);
       const errLang = resolveLang(taskTitle);
@@ -2849,6 +3074,7 @@ function startReviewConsensusMeeting(
         [`[CEO OFFICE] 处理'${taskTitle}'评审轮次时发生错误：${msg}`],
       ), errLang), taskId);
       if (meetingId) finishMeetingMinutes(meetingId, "failed");
+      dismissLeadersFromCeoOffice(taskId, leaders);
       reviewInFlight.delete(taskId);
     }
   })();
@@ -2920,7 +3146,7 @@ function startPlannedApprovalMeeting(
   taskId: string,
   taskTitle: string,
   departmentId: string | null,
-  onApproved: () => void,
+  onApproved: (planningNotes?: string[]) => void,
 ): void {
   const lockKey = `planned:${taskId}`;
   if (reviewInFlight.has(lockKey)) return;
@@ -2928,21 +3154,19 @@ function startPlannedApprovalMeeting(
 
   void (async () => {
     let meetingId: string | null = null;
+    const leaders = getTaskReviewLeaders(taskId, departmentId);
+    if (leaders.length === 0) {
+      reviewInFlight.delete(lockKey);
+      onApproved([]);
+      return;
+    }
     try {
-      const leaders = getTaskReviewLeaders(taskId, departmentId);
-      if (leaders.length === 0) {
-        reviewInFlight.delete(lockKey);
-        onApproved();
-        return;
-      }
-
       const round = (reviewRoundState.get(lockKey) ?? 0) + 1;
       reviewRoundState.set(lockKey, round);
 
       const planningLeader = leaders.find((l) => l.department_id === "planning") ?? leaders[0];
       const otherLeaders = leaders.filter((l) => l.id !== planningLeader.id);
-      let needsRevision = false;
-      let reviseOwner: AgentRow | null = null;
+      let hasSupplementSignals = false;
       const seatIndexByAgent = new Map(leaders.slice(0, 6).map((leader, idx) => [leader.id, idx]));
 
       const taskCtx = db.prepare(
@@ -2962,6 +3186,17 @@ function startPlannedApprovalMeeting(
       ).test(content);
       meetingId = beginMeetingMinutes(taskId, "planned", round, taskTitle);
       let minuteSeq = 1;
+      const abortIfInactive = (): boolean => {
+        if (!isTaskWorkflowInterrupted(taskId)) return false;
+        const status = getTaskStatusById(taskId);
+        if (meetingId) finishMeetingMinutes(meetingId, "failed");
+        dismissLeadersFromCeoOffice(taskId, leaders);
+        clearTaskWorkflowState(taskId);
+        if (status) {
+          appendTaskLog(taskId, "system", `Planned meeting aborted due to task state change (${status})`);
+        }
+        return true;
+      };
 
       const pushTranscript = (leader: AgentRow, content: string) => {
         transcript.push({
@@ -2972,6 +3207,7 @@ function startPlannedApprovalMeeting(
         });
       };
       const speak = (leader: AgentRow, messageType: string, receiverType: string, receiverId: string | null, content: string) => {
+        if (isTaskWorkflowInterrupted(taskId)) return;
         sendAgentMessage(leader, content, messageType, receiverType, receiverId, taskId);
         const seatIndex = seatIndexByAgent.get(leader.id) ?? 0;
         emitMeetingSpeech(leader.id, seatIndex, "kickoff", taskId, content);
@@ -2981,12 +3217,13 @@ function startPlannedApprovalMeeting(
         }
       };
 
+      if (abortIfInactive()) return;
       callLeadersToCeoOffice(taskId, leaders, "kickoff");
       notifyCeo(pickL(l(
-        [`[CEO OFFICE] '${taskTitle}' Planned 승인 라운드 ${round} 시작. 부서별 의견 수집 후 전원 Approved 확인합니다.`],
-        [`[CEO OFFICE] '${taskTitle}' planned approval round ${round} started. Collecting department feedback and confirming all approvals.`],
-        [`[CEO OFFICE] '${taskTitle}' のPlanned承認ラウンド${round}を開始。部門別意見を集め、全員承認を確認します。`],
-        [`[CEO OFFICE] 已开始'${taskTitle}'第${round}轮 Planned 审批，正在收集各部门意见并确认全员批准。`],
+        [`[CEO OFFICE] '${taskTitle}' Planned 계획 라운드 ${round} 시작. 부서별 보완점 수집 후 실행계획(SubTask)으로 정리합니다.`],
+        [`[CEO OFFICE] '${taskTitle}' planned round ${round} started. Collecting supplement points and turning them into executable subtasks.`],
+        [`[CEO OFFICE] '${taskTitle}' のPlanned計画ラウンド${round}を開始。補完項目を収集し、実行SubTaskへ落とし込みます。`],
+        [`[CEO OFFICE] 已开始'${taskTitle}'第${round}轮 Planned 规划，正在收集补充点并转为可执行 SubTask。`],
       ), lang), taskId);
 
       const openingPrompt = buildMeetingPrompt(planningLeader, {
@@ -2995,34 +3232,38 @@ function startPlannedApprovalMeeting(
         taskTitle,
         taskDescription,
         transcript,
-        turnObjective: "Open the kickoff approval meeting and request concise pre-start feedback from each team leader.",
-        stanceHint: "You are facilitating and will synthesize all inputs into one launch plan.",
+        turnObjective: "Open the planned kickoff meeting and ask each leader for concrete supplement points and planning actions.",
+        stanceHint: "At Planned stage, do not block kickoff; convert concerns into executable planning items.",
         lang,
       });
       const openingRun = await runAgentOneShot(planningLeader, openingPrompt, oneShotOptions);
+      if (abortIfInactive()) return;
       const openingText = chooseSafeReply(openingRun, lang, "opening", planningLeader);
       speak(planningLeader, "chat", "all", null, openingText);
       await sleepMs(randomDelay(700, 1260));
+      if (abortIfInactive()) return;
 
       for (const leader of otherLeaders) {
+        if (abortIfInactive()) return;
         const feedbackPrompt = buildMeetingPrompt(leader, {
           meetingType: "planned",
           round,
           taskTitle,
           taskDescription,
           transcript,
-          turnObjective: "Share concise kickoff readiness feedback and dependency risk level.",
-          stanceHint: "If revision is needed, explicitly state what must be fixed before approval.",
+          turnObjective: "Share concise readiness feedback plus concrete supplement items to be planned as subtasks.",
+          stanceHint: "Do not hold approval here; provide actionable plan additions with evidence/check item.",
           lang,
         });
         const feedbackRun = await runAgentOneShot(leader, feedbackPrompt, oneShotOptions);
+        if (abortIfInactive()) return;
         const feedbackText = chooseSafeReply(feedbackRun, lang, "feedback", leader);
         speak(leader, "chat", "agent", planningLeader.id, feedbackText);
         if (wantsRevision(feedbackText)) {
-          needsRevision = true;
-          if (!reviseOwner) reviseOwner = leader;
+          hasSupplementSignals = true;
         }
         await sleepMs(randomDelay(620, 1080));
+        if (abortIfInactive()) return;
       }
 
       const summaryPrompt = buildMeetingPrompt(planningLeader, {
@@ -3031,83 +3272,78 @@ function startPlannedApprovalMeeting(
         taskTitle,
         taskDescription,
         transcript,
-        turnObjective: needsRevision
-          ? "Summarize revision items and announce a follow-up approval round."
-          : "Summarize aligned kickoff plan and ask for final approval.",
-        stanceHint: needsRevision
-          ? "Clearly state supplement reflection first, then re-approval."
-          : "Clearly state final kickoff plan is ready now.",
+        turnObjective: "Summarize supplement points and announce that they will be converted to subtasks before execution.",
+        stanceHint: "Keep kickoff moving and show concrete planned next steps instead of blocking.",
         lang,
       });
       const summaryRun = await runAgentOneShot(planningLeader, summaryPrompt, oneShotOptions);
+      if (abortIfInactive()) return;
       const summaryText = chooseSafeReply(summaryRun, lang, "summary", planningLeader);
       speak(planningLeader, "report", "all", null, summaryText);
       await sleepMs(randomDelay(640, 1120));
+      if (abortIfInactive()) return;
 
       for (const leader of leaders) {
-        const isReviseOwner = reviseOwner?.id === leader.id;
-        const approvalPrompt = buildMeetingPrompt(leader, {
+        if (abortIfInactive()) return;
+        const actionPrompt = buildMeetingPrompt(leader, {
           meetingType: "planned",
           round,
           taskTitle,
           taskDescription,
           transcript,
-          turnObjective: "State your final kickoff approval decision for this round.",
-          stanceHint: !needsRevision
-            ? "Approve kickoff plan now if ready; otherwise hold approval with concrete revision items."
-            : (isReviseOwner
-              ? "Hold approval until supplement reflection is verified."
-              : "Agree with conditional approval pending supplement reflection."),
+          turnObjective: "Propose one immediate planning action item for your team in subtask style.",
+          stanceHint: "State what to do next, what evidence to collect, and who owns it. Do not block kickoff at this stage.",
           lang,
         });
-        const approvalRun = await runAgentOneShot(leader, approvalPrompt, oneShotOptions);
-        const approvalText = chooseSafeReply(approvalRun, lang, "approval", leader);
-        speak(leader, "status_update", "all", null, approvalText);
-        if (wantsRevision(approvalText)) {
-          needsRevision = true;
-          if (!reviseOwner) reviseOwner = leader;
+        const actionRun = await runAgentOneShot(leader, actionPrompt, oneShotOptions);
+        if (abortIfInactive()) return;
+        const actionText = chooseSafeReply(actionRun, lang, "approval", leader);
+        speak(leader, "status_update", "all", null, actionText);
+        if (wantsRevision(actionText)) {
+          hasSupplementSignals = true;
         }
         await sleepMs(randomDelay(420, 840));
+        if (abortIfInactive()) return;
       }
 
       await sleepMs(randomDelay(520, 900));
-
-      if (needsRevision) {
-        appendTaskLog(taskId, "system", `Planned approval round ${round}: revision requested`);
-        notifyCeo(pickL(l(
-          [`[CEO OFFICE] '${taskTitle}' Planned 승인 보류. 보완안 반영 후 재승인 라운드를 진행합니다.`],
-          [`[CEO OFFICE] '${taskTitle}' planned approval is on hold. Revisions will be applied and a re-approval round will follow.`],
-          [`[CEO OFFICE] '${taskTitle}' のPlanned承認は保留です。修正反映後に再承認ラウンドを行います。`],
-          [`[CEO OFFICE] '${taskTitle}'的 Planned 审批已暂缓，修订后将进入再次审批。`],
-        ), lang), taskId);
-        if (meetingId) finishMeetingMinutes(meetingId, "revision_requested");
-        reviewInFlight.delete(lockKey);
-        setTimeout(() => startPlannedApprovalMeeting(taskId, taskTitle, departmentId, onApproved), 2200);
-        return;
-      }
-
-      appendTaskLog(taskId, "system", `Planned approval round ${round}: all leaders approved`);
+      if (abortIfInactive()) return;
+      const planItems = collectPlannedActionItems(transcript, 10);
+      appendTaskProjectMemo(taskId, "planned", round, planItems, lang);
+      appendTaskLog(
+        taskId,
+        "system",
+        `Planned meeting round ${round}: action items collected (${planItems.length}, supplement-signals=${hasSupplementSignals ? "yes" : "no"})`,
+      );
       notifyCeo(pickL(l(
-        [`[CEO OFFICE] '${taskTitle}' Planned 단계 전원 Approved 완료. In Progress로 전환합니다.`],
-        [`[CEO OFFICE] '${taskTitle}' is approved by all leaders at Planned stage. Moving to In Progress.`],
-        [`[CEO OFFICE] '${taskTitle}' はPlanned段階で全員承認済みです。In Progressへ移行します。`],
-        [`[CEO OFFICE] '${taskTitle}'在 Planned 阶段已获全员批准，转为 In Progress。`],
+        [`[CEO OFFICE] '${taskTitle}' Planned 회의 종료. 보완점 ${planItems.length}건을 계획 항목으로 기록하고 In Progress로 진행합니다.`],
+        [`[CEO OFFICE] Planned meeting for '${taskTitle}' is complete. Recorded ${planItems.length} improvement items and moving to In Progress.`],
+        [`[CEO OFFICE] '${taskTitle}' のPlanned会議が完了。補完項目${planItems.length}件を計画化し、In Progressへ進みます。`],
+        [`[CEO OFFICE] '${taskTitle}' 的 Planned 会议已结束，已记录 ${planItems.length} 个改进项并转入 In Progress。`],
       ), lang), taskId);
       if (meetingId) finishMeetingMinutes(meetingId, "completed");
+      dismissLeadersFromCeoOffice(taskId, leaders);
       reviewRoundState.delete(lockKey);
       reviewInFlight.delete(lockKey);
-      onApproved();
+      onApproved(planItems);
     } catch (err: any) {
+      if (isTaskWorkflowInterrupted(taskId)) {
+        if (meetingId) finishMeetingMinutes(meetingId, "failed");
+        dismissLeadersFromCeoOffice(taskId, leaders);
+        clearTaskWorkflowState(taskId);
+        return;
+      }
       const msg = err?.message ? String(err.message) : String(err);
-      appendTaskLog(taskId, "error", `Planned approval meeting error: ${msg}`);
+      appendTaskLog(taskId, "error", `Planned meeting error: ${msg}`);
       const errLang = resolveLang(taskTitle);
       notifyCeo(pickL(l(
-        [`[CEO OFFICE] '${taskTitle}' Planned 승인 회의 처리 중 오류가 발생했습니다: ${msg}`],
-        [`[CEO OFFICE] Error while processing planned approval meeting for '${taskTitle}': ${msg}`],
-        [`[CEO OFFICE] '${taskTitle}' のPlanned承認会議処理中にエラーが発生しました: ${msg}`],
-        [`[CEO OFFICE] 处理'${taskTitle}'的 Planned 审批会议时发生错误：${msg}`],
+        [`[CEO OFFICE] '${taskTitle}' Planned 회의 처리 중 오류가 발생했습니다: ${msg}`],
+        [`[CEO OFFICE] Error while processing planned meeting for '${taskTitle}': ${msg}`],
+        [`[CEO OFFICE] '${taskTitle}' のPlanned会議処理中にエラーが発生しました: ${msg}`],
+        [`[CEO OFFICE] 处理'${taskTitle}'的 Planned 会议时发生错误：${msg}`],
       ), errLang), taskId);
       if (meetingId) finishMeetingMinutes(meetingId, "failed");
+      dismissLeadersFromCeoOffice(taskId, leaders);
       reviewInFlight.delete(lockKey);
     }
   })();
@@ -3140,12 +3376,7 @@ function handleTaskRunComplete(taskId: string, exitCode: number): void {
         `RUN completion ignored (status=${task.status}, exit=${exitCode}, stop_requested=${stopRequested ? "yes" : "no"})`,
       );
     }
-    crossDeptNextCallbacks.delete(taskId);
-    subtaskDelegationCallbacks.delete(taskId);
-    reviewInFlight.delete(taskId);
-    reviewInFlight.delete(`planned:${taskId}`);
-    reviewRoundState.delete(taskId);
-    reviewRoundState.delete(`planned:${taskId}`);
+    clearTaskWorkflowState(taskId);
     return;
   }
 
@@ -3787,6 +4018,11 @@ app.patch("/api/tasks/:id", (req, res) => {
   params.push(id);
   db.prepare(`UPDATE tasks SET ${updates.join(", ")} WHERE id = ?`).run(...params);
 
+  const nextStatus = typeof body.status === "string" ? body.status : null;
+  if (nextStatus && (nextStatus === "cancelled" || nextStatus === "pending" || nextStatus === "done" || nextStatus === "inbox")) {
+    clearTaskWorkflowState(id);
+  }
+
   appendTaskLog(id, "system", `Task updated: ${Object.keys(body).join(", ")}`);
 
   const updated = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
@@ -3800,6 +4036,8 @@ app.delete("/api/tasks/:id", (req, res) => {
     assigned_agent_id: string | null;
   } | undefined;
   if (!existing) return res.status(404).json({ error: "not_found" });
+
+  clearTaskWorkflowState(id);
 
   // Kill any running process
   const activeChild = activeProcesses.get(id);
@@ -4186,6 +4424,7 @@ app.post("/api/tasks/:id/stop", (req, res) => {
   } | undefined;
   if (!task) return res.status(404).json({ error: "not_found" });
 
+  clearTaskWorkflowState(id);
   stopProgressTimer(id);
 
   const activeChild = activeProcesses.get(id);
@@ -5548,6 +5787,168 @@ function resolveProjectPath(task: { project_path?: string | null; description?: 
   return detected || process.cwd();
 }
 
+function stripReportRequestPrefix(content: string): string {
+  return content
+    .replace(/^\s*\[(보고 요청|Report Request|レポート依頼|报告请求)\]\s*/i, "")
+    .trim();
+}
+
+type ReportOutputFormat = "ppt" | "md";
+
+function detectReportOutputFormat(requestText: string): ReportOutputFormat {
+  const text = requestText.toLowerCase();
+  const wantsPpt = /pptx?|slide|deck|presentation|발표|슬라이드|시각화|그래프|차트|도표|visual|chart|diagram|图表|简报|プレゼン|資料/.test(text);
+  if (wantsPpt) return "ppt";
+  return "md";
+}
+
+function pickPlanningReportAssignee(preferredAgentId: string | null): AgentRow | null {
+  const planningAgents = db.prepare(`
+    SELECT * FROM agents
+    WHERE department_id = 'planning' AND status != 'offline'
+  `).all() as AgentRow[];
+  if (planningAgents.length === 0) return null;
+  const claudeAgents = planningAgents.filter((a) => (a.cli_provider || "") === "claude");
+  const candidatePool = claudeAgents.length > 0 ? claudeAgents : planningAgents;
+
+  if (preferredAgentId) {
+    const preferred = candidatePool.find((a) => a.id === preferredAgentId);
+    if (preferred) return preferred;
+  }
+
+  const providerPriority: Record<string, number> = {
+    claude: 0,
+    codex: 1,
+    gemini: 2,
+    opencode: 3,
+    copilot: 4,
+    antigravity: 5,
+  };
+  const statusPriority: Record<string, number> = {
+    idle: 0,
+    break: 1,
+    working: 2,
+    offline: 3,
+  };
+  const rolePriority: Record<string, number> = {
+    senior: 0,
+    junior: 1,
+    intern: 2,
+    team_leader: 3,
+  };
+
+  const sorted = [...candidatePool].sort((a, b) => {
+    const ap = providerPriority[a.cli_provider || ""] ?? 9;
+    const bp = providerPriority[b.cli_provider || ""] ?? 9;
+    if (ap !== bp) return ap - bp;
+
+    const as = statusPriority[a.status || ""] ?? 9;
+    const bs = statusPriority[b.status || ""] ?? 9;
+    if (as !== bs) return as - bs;
+
+    const ar = rolePriority[a.role || ""] ?? 9;
+    const br = rolePriority[b.role || ""] ?? 9;
+    if (ar !== br) return ar - br;
+
+    return a.name.localeCompare(b.name);
+  });
+  return sorted[0] ?? null;
+}
+
+function handleReportRequest(targetAgentId: string, ceoMessage: string): boolean {
+  const reportAssignee = pickPlanningReportAssignee(targetAgentId);
+  if (!reportAssignee) return false;
+
+  const lang = resolveLang(ceoMessage);
+  const cleanRequest = stripReportRequestPrefix(ceoMessage) || ceoMessage.trim();
+  const outputFormat = detectReportOutputFormat(cleanRequest);
+  const outputLabel = outputFormat === "ppt" ? "PPT" : "MD";
+  const outputExt = outputFormat === "ppt" ? "pptx" : "md";
+  const taskType = outputFormat === "ppt" ? "presentation" : "documentation";
+  const t = nowMs();
+  const taskId = randomUUID();
+  const requestPreview = cleanRequest.length > 64 ? `${cleanRequest.slice(0, 61).trimEnd()}...` : cleanRequest;
+  const taskTitle = outputFormat === "ppt"
+    ? `보고 자료(PPT) 작성: ${requestPreview}`
+    : `보고 문서(MD) 작성: ${requestPreview}`;
+  const detectedPath = detectProjectPath(cleanRequest);
+  const fileStamp = new Date().toISOString().replace(/[:]/g, "-").slice(0, 16);
+  const outputPath = outputFormat === "ppt"
+    ? `docs/reports/${fileStamp}-report-deck.${outputExt}`
+    : `docs/reports/${fileStamp}-report.${outputExt}`;
+
+  const description = [
+    `[REPORT REQUEST] ${cleanRequest}`,
+    "",
+    `Primary output format: ${outputLabel}`,
+    `Target file path: ${outputPath}`,
+    "Rules:",
+    "- This is a report/documentation request only; do not execute implementation work.",
+    outputFormat === "ppt"
+      ? "- Create slide-ready content for presentation. If direct pptx generation is unavailable, create a slide-structured markdown deck and clearly mark conversion guidance."
+      : "- Create a complete markdown report with structured headings and evidence.",
+    "- Include executive summary, key findings, quantitative evidence, risks, and next actions.",
+  ].join("\n");
+
+  db.prepare(`
+    INSERT INTO tasks (id, title, description, department_id, assigned_agent_id, status, priority, task_type, project_path, created_at, updated_at)
+    VALUES (?, ?, ?, 'planning', ?, 'planned', 1, ?, ?, ?, ?)
+  `).run(
+    taskId,
+    taskTitle,
+    description,
+    reportAssignee.id,
+    taskType,
+    detectedPath ?? null,
+    t,
+    t,
+  );
+
+  db.prepare("UPDATE agents SET current_task_id = ? WHERE id = ?").run(taskId, reportAssignee.id);
+  appendTaskLog(taskId, "system", `Report request received via chat: ${cleanRequest}`);
+  appendTaskLog(
+    taskId,
+    "system",
+    `Report routing: assignee=${reportAssignee.name} provider=${reportAssignee.cli_provider || "unknown"} format=${outputLabel}`,
+  );
+  if (detectedPath) {
+    appendTaskLog(taskId, "system", `Project path detected: ${detectedPath}`);
+  }
+
+  const assigneeName = getAgentDisplayName(reportAssignee, lang);
+  const providerLabel = reportAssignee.cli_provider || "claude";
+  sendAgentMessage(
+    reportAssignee,
+    pickL(l(
+      [`${assigneeName}입니다. 보고 요청을 접수했습니다. ${outputLabel} 형식으로 작성해 제출하겠습니다.`],
+      [`${assigneeName} here. Report request received. I'll deliver it in ${outputLabel} format.`],
+      [`${assigneeName}です。レポート依頼を受領しました。${outputLabel}形式で作成して提出します。`],
+      [`${assigneeName}收到报告请求，将按${outputLabel}格式完成并提交。`],
+    ), lang),
+    "report",
+    "all",
+    null,
+    taskId,
+  );
+
+  notifyCeo(pickL(l(
+    [`[REPORT ROUTING] '${taskTitle}' 요청을 ${assigneeName}(${providerLabel})에게 배정했습니다. 출력 형식: ${outputLabel}`],
+    [`[REPORT ROUTING] Assigned '${taskTitle}' to ${assigneeName} (${providerLabel}). Output format: ${outputLabel}`],
+    [`[REPORT ROUTING] '${taskTitle}' を ${assigneeName} (${providerLabel}) に割り当てました。出力形式: ${outputLabel}`],
+    [`[REPORT ROUTING] 已将'${taskTitle}'分配给${assigneeName}（${providerLabel}）。输出格式：${outputLabel}`],
+  ), lang), taskId);
+
+  broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
+  broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(reportAssignee.id));
+
+  setTimeout(() => {
+    if (isTaskWorkflowInterrupted(taskId)) return;
+    startTaskExecutionForAgent(taskId, reportAssignee, "planning", getDeptName("planning"));
+  }, randomDelay(900, 1600));
+
+  return true;
+}
+
 function handleTaskDelegation(
   teamLeader: AgentRow,
   ceoMessage: string,
@@ -5597,6 +5998,7 @@ function handleTaskDelegation(
     }
 
     const runCrossDeptBeforeDelegationIfNeeded = (next: () => void) => {
+      if (isTaskWorkflowInterrupted(taskId)) return;
       if (!(isPlanningLead && mentionedDepts.length > 0)) {
         next();
         return;
@@ -5614,6 +6016,7 @@ function handleTaskDelegation(
         0,
         { teamLeader, taskTitle, ceoMessage, leaderDeptId, leaderDeptName, leaderName, lang, taskId },
         () => {
+          if (isTaskWorkflowInterrupted(taskId)) return;
           notifyCeo(pickL(l(
             ["[CEO OFFICE] 유관부서 선행 처리 완료. 이제 내부 업무 하달을 시작합니다."],
             ["[CEO OFFICE] Related-department pre-processing complete. Starting internal delegation now."],
@@ -5629,6 +6032,7 @@ function handleTaskDelegation(
       if (isPlanningLead || mentionedDepts.length === 0) return;
       const crossDelay = 3000 + Math.random() * 1000;
       setTimeout(() => {
+        if (isTaskWorkflowInterrupted(taskId)) return;
         startCrossDeptCooperation(mentionedDepts, 0, {
           teamLeader, taskTitle, ceoMessage, leaderDeptId, leaderDeptName, leaderName, lang, taskId,
         });
@@ -5651,17 +6055,17 @@ function handleTaskDelegation(
       } else if (mentionedDepts.length > 0) {
         const crossDeptNames = mentionedDepts.map(getDeptName).join(", ");
         ackMsg = pickL(l(
-          [`네, 대표님! 먼저 팀장 승인 회의를 진행한 뒤 ${subRole} ${subName}에게 하달하고, ${crossDeptNames} 협업도 연계하겠습니다. 📋`, `알겠습니다! 팀장 회의에서 착수안 승인 완료 후 ${subName} 배정과 ${crossDeptNames} 협업 조율을 진행하겠습니다 🤝`],
-          [`Understood. We'll run the team-lead approval meeting first, then delegate to ${subRole} ${subName} and coordinate with ${crossDeptNames}. 📋`, `Got it. After kickoff approval in the leaders' meeting, I'll assign ${subName} and sync with ${crossDeptNames}. 🤝`],
-          [`了解しました。まずチームリーダー承認会議を行い、その後 ${subRole} ${subName} へ委任し、${crossDeptNames} との協業も調整します。📋`],
-          [`收到。先进行团队负责人审批会议，审批后再下达给${subRole} ${subName}，并协调${crossDeptNames}协作。📋`],
+          [`네, 대표님! 먼저 팀장 계획 회의를 진행한 뒤 ${subRole} ${subName}에게 하달하고, ${crossDeptNames} 협업도 연계하겠습니다. 📋`, `알겠습니다! 팀장 계획 회의에서 착수안 정리 완료 후 ${subName} 배정과 ${crossDeptNames} 협업 조율을 진행하겠습니다 🤝`],
+          [`Understood. We'll run the team-lead planning meeting first, then delegate to ${subRole} ${subName} and coordinate with ${crossDeptNames}. 📋`, `Got it. After the leaders' planning meeting, I'll assign ${subName} and sync with ${crossDeptNames}. 🤝`],
+          [`了解しました。まずチームリーダー計画会議を行い、その後 ${subRole} ${subName} へ委任し、${crossDeptNames} との協業も調整します。📋`],
+          [`收到。先进行团队负责人规划会议，再下达给${subRole} ${subName}，并协调${crossDeptNames}协作。📋`],
         ), lang);
       } else {
         ackMsg = pickL(l(
-          [`네, 대표님! 먼저 팀장 승인 회의를 소집하고, 승인 완료 후 ${subRole} ${subName}에게 하달하겠습니다. 📋`, `알겠습니다! 우리 팀 ${subName}가 적임자이며, 회의 승인 직후 지시하겠습니다. 🚀`, `확인했습니다, 대표님! 팀장 회의 후 ${subName}에게 전달하고 진행 관리하겠습니다.`],
-          [`Understood. I'll convene the team-lead approval meeting first, then assign to ${subRole} ${subName} after approval. 📋`, `Got it. ${subName} is the best fit, and I'll delegate right after leaders approve. 🚀`, `Confirmed. After the leaders' meeting, I'll hand this off to ${subName} and manage execution.`],
-          [`了解しました。まずチームリーダー承認会議を招集し、承認後に ${subRole} ${subName} へ委任します。📋`, `承知しました。${subName} が最適任なので、会議承認直後に指示します。🚀`],
-          [`收到。先召集团队负责人审批会议，审批通过后再分配给${subRole} ${subName}。📋`, `明白。${subName}最合适，会在会议批准后立即下达。🚀`],
+          [`네, 대표님! 먼저 팀장 계획 회의를 소집하고, 회의 결과 정리 후 ${subRole} ${subName}에게 하달하겠습니다. 📋`, `알겠습니다! 우리 팀 ${subName}가 적임자이며, 팀장 계획 회의 종료 후 순차적으로 지시하겠습니다.`, `확인했습니다, 대표님! 팀장 계획 회의 후 ${subName}에게 전달하고 진행 관리하겠습니다.`],
+          [`Understood. I'll convene the team-lead planning meeting first, then assign to ${subRole} ${subName} after the planning output is finalized. 📋`, `Got it. ${subName} is the best fit, and I'll delegate in sequence after the leaders' planning meeting concludes.`, `Confirmed. After the leaders' planning meeting, I'll hand this off to ${subName} and manage execution.`],
+          [`了解しました。まずチームリーダー計画会議を招集し、会議結果整理後に ${subRole} ${subName} へ委任します。📋`, `承知しました。${subName} が最適任なので、会議終了後に順次指示します。`],
+          [`收到。先召集团队负责人规划会议，整理结论后再分配给${subRole} ${subName}。📋`, `明白。${subName}最合适，会在会议结束后按顺序下达。`],
         ), lang);
       }
       sendAgentMessage(teamLeader, ackMsg, "chat", "agent", null, taskId);
@@ -5670,6 +6074,7 @@ function handleTaskDelegation(
         // --- Step 2: Delegate to subordinate (2~3 sec) ---
         const delegateDelay = 2000 + Math.random() * 1000;
         setTimeout(() => {
+          if (isTaskWorkflowInterrupted(taskId)) return;
           const t2 = nowMs();
           db.prepare(
             "UPDATE tasks SET assigned_agent_id = ?, status = 'planned', updated_at = ? WHERE id = ?"
@@ -5691,6 +6096,7 @@ function handleTaskDelegation(
           // --- Step 3: Subordinate acknowledges (1~2 sec) ---
           const subAckDelay = 1000 + Math.random() * 1000;
           setTimeout(() => {
+            if (isTaskWorkflowInterrupted(taskId)) return;
             const leaderRole = getRoleLabel(teamLeader.role, lang);
             const subAckMsg = pickL(l(
               [`네, ${leaderRole} ${leaderName}님! 확인했습니다. 바로 착수하겠습니다! 💪`, `알겠습니다! 바로 시작하겠습니다. 진행 상황 공유 드리겠습니다.`, `확인했습니다, ${leaderName}님! 최선을 다해 처리하겠습니다 🔥`],
@@ -5705,17 +6111,18 @@ function handleTaskDelegation(
         }, delegateDelay);
       };
 
-      startPlannedApprovalMeeting(taskId, taskTitle, leaderDeptId, () => {
-        seedApprovedPlanSubtasks(taskId, leaderDeptId);
+      startPlannedApprovalMeeting(taskId, taskTitle, leaderDeptId, (planningNotes) => {
+        if (isTaskWorkflowInterrupted(taskId)) return;
+        seedApprovedPlanSubtasks(taskId, leaderDeptId, planningNotes ?? []);
         runCrossDeptBeforeDelegationIfNeeded(delegateToSubordinate);
       });
     } else {
       // No subordinate — team leader handles it themselves
       const selfMsg = pickL(l(
-        [`네, 대표님! 먼저 팀장 승인 회의를 진행하고, 팀 내 가용 인력이 없어 승인 후 제가 직접 처리하겠습니다. 💪`, `알겠습니다! 팀장 회의 승인 완료 후 제가 직접 진행하겠습니다.`],
-        [`Understood. We'll complete the team-lead approval meeting first, and since no one is available I'll execute it myself after approval. 💪`, `Got it. I'll proceed personally after the leaders' approval meeting.`],
-        [`了解しました。まずチームリーダー承認会議を行い、空き要員がいないため承認後は私が直接対応します。💪`],
-        [`收到。先进行团队负责人审批会议，因无可用成员，审批后由我亲自执行。💪`],
+        [`네, 대표님! 먼저 팀장 계획 회의를 진행하고, 팀 내 가용 인력이 없어 회의 정리 후 제가 직접 처리하겠습니다. 💪`, `알겠습니다! 팀장 계획 회의 완료 후 제가 직접 진행하겠습니다.`],
+        [`Understood. We'll complete the team-lead planning meeting first, and since no one is available I'll execute it myself after the plan is organized. 💪`, `Got it. I'll proceed personally after the leaders' planning meeting.`],
+        [`了解しました。まずチームリーダー計画会議を行い、空き要員がいないため会議整理後は私が直接対応します。💪`],
+        [`收到。先进行团队负责人规划会议，因无可用成员，会议整理后由我亲自执行。💪`],
       ), lang);
       sendAgentMessage(teamLeader, selfMsg, "chat", "agent", null, taskId);
 
@@ -5729,9 +6136,11 @@ function handleTaskDelegation(
       broadcast("task_update", db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId));
       broadcast("agent_status", db.prepare("SELECT * FROM agents WHERE id = ?").get(teamLeader.id));
 
-      startPlannedApprovalMeeting(taskId, taskTitle, leaderDeptId, () => {
-        seedApprovedPlanSubtasks(taskId, leaderDeptId);
+      startPlannedApprovalMeeting(taskId, taskTitle, leaderDeptId, (planningNotes) => {
+        if (isTaskWorkflowInterrupted(taskId)) return;
+        seedApprovedPlanSubtasks(taskId, leaderDeptId, planningNotes ?? []);
         runCrossDeptBeforeDelegationIfNeeded(() => {
+          if (isTaskWorkflowInterrupted(taskId)) return;
           startTaskExecutionForAgent(taskId, teamLeader, leaderDeptId, leaderDeptName);
           runCrossDeptAfterMainIfNeeded();
         });
@@ -5862,6 +6271,14 @@ app.post("/api/messages", (req, res) => {
 
   // Schedule agent auto-reply when CEO messages an agent
   if (senderType === "ceo" && receiverType === "agent" && receiverId) {
+    if (messageType === "report") {
+      const handled = handleReportRequest(receiverId, content);
+      if (!handled) {
+        scheduleAgentReply(receiverId, content, messageType);
+      }
+      return res.json({ ok: true, message: msg });
+    }
+
     scheduleAgentReply(receiverId, content, messageType);
 
     // Check for @mentions to other departments/agents
