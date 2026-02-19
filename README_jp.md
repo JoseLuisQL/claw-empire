@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.2-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.3-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.0.2.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.0.3.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -53,14 +53,14 @@ Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude
 
 ---
 
-## 最新リリース (v1.0.2)
+## 最新リリース (v1.0.3)
 
-- エージェントトークン最適化: プロジェクト構造を自動分析してエージェントプロンプトに注入（git HEADベースのキャッシュ）
-- エージェント間変更共有: エージェントB投入時にエージェントAの最新変更をgit logとworktree diff statで自動伝達
-- Claude Codeエージェント用 `CLAUDE.md` 自動生成（既存のCLAUDE.mdがあるプロジェクトはスキップ）
-- run/spawn/協業/委任の全プロンプトで共通MVPコードレビューポリシーブロックを適用（既定: CRITICAL/HIGH即時修正、MEDIUM/LOWは警告レポート）
-- 警告修正の例外override: ユーザーが警告レベル修正を明示（または `[ALLOW_WARNING_FIX]` / `[WARN_FIX]` を含む）した場合、指定されたMEDIUM/LOW項目は修正可能
-- 詳細: [`docs/releases/v1.0.2.md`](docs/releases/v1.0.2.md)
+- `/api/messages` `/api/announcements` `/api/directives` `/api/inbox` の冪等重複抑止をエンドツーエンドで強化
+- クライアント送信APIに `postWithIdempotency()`（タイムアウト + バックオフ/ジッター再試行）を適用
+- エンドポイントスコープ付き冪等キーhashでルート間キー衝突を防止
+- セキュリティ監査ログチェーン検証コマンドを追加: `npm run audit:verify`
+- レビューワークフローのガードレールで補完ループを制限し、重複保留ラウンドを強制最終化
+- 詳細: [`docs/releases/v1.0.3.md`](docs/releases/v1.0.3.md)
 
 ---
 

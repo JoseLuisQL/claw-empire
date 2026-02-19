@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.2-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.3-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#빠른-시작">빠른 시작</a> &middot;
   <a href="#ai-installation-guide">AI 설치 가이드</a> &middot;
-  <a href="docs/releases/v1.0.2.md">릴리즈 노트</a> &middot;
+  <a href="docs/releases/v1.0.3.md">릴리즈 노트</a> &middot;
   <a href="#openclaw-integration">OpenClaw 연동</a> &middot;
   <a href="#dollar-command-logic">$ 명령 로직</a> &middot;
   <a href="#주요-기능">주요 기능</a> &middot;
@@ -53,14 +53,14 @@ Claw-Empire는 CLI 기반 AI 코딩 어시스턴트 — **Claude Code**, **Codex
 
 ---
 
-## 최신 릴리즈 (v1.0.2)
+## 최신 릴리즈 (v1.0.3)
 
-- 에이전트 토큰 최적화: 프로젝트 구조를 자동 분석하여 에이전트 프롬프트에 주입 (git HEAD 기준 캐시)
-- 에이전트 간 변경사항 공유: 에이전트 B 투입 시 에이전트 A의 최근 변경사항을 git log 및 worktree diff stat으로 자동 전달
-- Claude Code 에이전트용 `CLAUDE.md` 자동 생성 (기존 CLAUDE.md가 있는 프로젝트는 건드리지 않음)
-- run/spawn/협업/위임 프롬프트 전 경로에 공통 MVP 코드 리뷰 정책 블록 적용 (기본: CRITICAL/HIGH 즉시 수정, MEDIUM/LOW 경고 보고서)
-- 경고 수정 예외 override: 사용자 요청으로 경고 레벨 수정이 명시되면(또는 `[ALLOW_WARNING_FIX]` / `[WARN_FIX]` 포함) 요청된 MEDIUM/LOW 항목은 수정 가능
-- 상세 문서: [`docs/releases/v1.0.2.md`](docs/releases/v1.0.2.md)
+- `/api/messages`, `/api/announcements`, `/api/directives`, `/api/inbox` 전 구간 idempotency 중복 억제를 강화
+- 클라이언트 전송 API에 `postWithIdempotency()`(타임아웃 + 백오프/지터 재시도) 적용
+- 엔드포인트 스코프 기반 idempotency 해시로 라우트 간 키 충돌 방지
+- 보안 감사로그 체인 검증 명령 추가: `npm run audit:verify`
+- 리뷰 워크플로우 가드레일로 보완 루프를 제한하고 중복 보류 라운드에서 강제 최종화
+- 상세 문서: [`docs/releases/v1.0.3.md`](docs/releases/v1.0.3.md)
 
 ---
 

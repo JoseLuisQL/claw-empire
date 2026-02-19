@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.2-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.3-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#ai-installation-guide">AI Install Guide</a> &middot;
-  <a href="docs/releases/v1.0.2.md">Release Notes</a> &middot;
+  <a href="docs/releases/v1.0.3.md">Release Notes</a> &middot;
   <a href="#openclaw-integration">OpenClaw</a> &middot;
   <a href="#dollar-command-logic">$ Command</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -53,14 +53,14 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 
 ---
 
-## Latest Release (v1.0.2)
+## Latest Release (v1.0.3)
 
-- Agent token optimization: auto-generated project context injected into agent prompts (cached by git HEAD)
-- Cross-agent change awareness: Agent B automatically receives Agent A's recent changes via git log and worktree diff stats
-- Auto-generated `CLAUDE.md` in worktrees for Claude Code agents (skips projects with existing CLAUDE.md)
-- Shared MVP code review policy block across run/spawn/collaboration/delegation prompts (CRITICAL/HIGH fix, MEDIUM/LOW report only by default)
-- Explicit warning-fix override: when users request warning-level fixes (or include `[ALLOW_WARNING_FIX]` / `[WARN_FIX]`), requested MEDIUM/LOW items may be fixed
-- Full notes: [`docs/releases/v1.0.2.md`](docs/releases/v1.0.2.md)
+- End-to-end idempotent delivery hardened for `/api/messages`, `/api/announcements`, `/api/directives`, and `/api/inbox`
+- Client send APIs now use `postWithIdempotency()` with timeout + retry backoff/jitter for transient failures
+- Endpoint-scoped idempotency hashing added to prevent cross-route key collisions
+- Security audit chain verification command added: `npm run audit:verify`
+- Review workflow guardrails added to cap revision loops and force finalization on duplicate-only blocker rounds
+- Full notes: [`docs/releases/v1.0.3.md`](docs/releases/v1.0.3.md)
 
 ---
 

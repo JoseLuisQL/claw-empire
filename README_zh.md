@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.2-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.3-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.0.2.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.0.3.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -53,14 +53,14 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 
 ---
 
-## 最新发布 (v1.0.2)
+## 最新发布 (v1.0.3)
 
-- 代理令牌优化：自动分析项目结构并注入代理提示词（基于 git HEAD 缓存）
-- 跨代理变更感知：代理 B 投入时自动接收代理 A 的最新变更（通过 git log 和 worktree diff stat）
-- Claude Code 代理自动生成 `CLAUDE.md`（已有 CLAUDE.md 的项目不受影响）
-- 在 run/spawn/协作/委派 全路径提示词中统一注入 MVP 代码审查策略块（默认：CRITICAL/HIGH 立即修复，MEDIUM/LOW 仅警告报告）
-- 警告修复例外 override：当用户明确要求修复警告级问题（或包含 `[ALLOW_WARNING_FIX]` / `[WARN_FIX]`）时，可修复请求范围内的 MEDIUM/LOW 项
-- 详细说明：[`docs/releases/v1.0.2.md`](docs/releases/v1.0.2.md)
+- 对 `/api/messages`、`/api/announcements`、`/api/directives`、`/api/inbox` 的幂等去重链路做了端到端加固
+- 客户端发送 API 接入 `postWithIdempotency()`（超时 + 指数退避/抖动重试）
+- 新增按端点作用域的幂等键哈希，避免跨路由键冲突
+- 新增安全审计日志链校验命令：`npm run audit:verify`
+- 评审流程护栏用于限制补正循环，并在重复保留轮次强制进入最终决策
+- 详细说明：[`docs/releases/v1.0.3.md`](docs/releases/v1.0.3.md)
 
 ---
 
