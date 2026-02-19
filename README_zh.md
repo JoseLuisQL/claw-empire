@@ -58,7 +58,8 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 - 代理令牌优化：自动分析项目结构并注入代理提示词（基于 git HEAD 缓存）
 - 跨代理变更感知：代理 B 投入时自动接收代理 A 的最新变更（通过 git log 和 worktree diff stat）
 - Claude Code 代理自动生成 `CLAUDE.md`（已有 CLAUDE.md 的项目不受影响）
-- 双语（EN/KO）MVP 代码审查策略：仅 CRITICAL/HIGH 立即修复，MEDIUM/LOW 仅作为警告报告
+- 在 run/spawn/协作/委派 全路径提示词中统一注入 MVP 代码审查策略块（默认：CRITICAL/HIGH 立即修复，MEDIUM/LOW 仅警告报告）
+- 警告修复例外 override：当用户明确要求修复警告级问题（或包含 `[ALLOW_WARNING_FIX]` / `[WARN_FIX]`）时，可修复请求范围内的 MEDIUM/LOW 项
 - 详细说明：[`docs/releases/v1.0.2.md`](docs/releases/v1.0.2.md)
 
 ---

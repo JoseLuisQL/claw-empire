@@ -1385,6 +1385,39 @@ function getWorktreeDiffSummary(projectPath: string, taskId: string): string {
   }
 }
 
+const MVP_CODE_REVIEW_POLICY_BASE_LINES = [
+  "[MVP Code Review Policy / 코드 리뷰 정책]",
+  "- CRITICAL/HIGH: fix immediately / 즉시 수정",
+  "- MEDIUM/LOW: warning report only, no code changes / 경고 보고서만, 코드 수정 금지",
+];
+
+const WARNING_FIX_OVERRIDE_LINE = "- Exception override: User explicitly requested warning-level fixes for this task. You may fix the requested MEDIUM/LOW items / 예외: 이 작업에서 사용자 요청 시 MEDIUM/LOW도 해당 요청 범위 내에서 수정 가능";
+
+function hasExplicitWarningFixRequest(...textParts: Array<string | null | undefined>): boolean {
+  const text = textParts.filter((part): part is string => typeof part === "string" && part.trim().length > 0).join("\n");
+  if (!text) return false;
+  if (/\[(ALLOW_WARNING_FIX|WARN_FIX)\]/i.test(text)) return true;
+
+  const requestHint = /\b(please|can you|need to|must|should|fix this|fix these|resolve this|address this|fix requested|warning fix)\b|해줘|해주세요|수정해|수정해야|고쳐|고쳐줘|해결해|반영해|조치해|수정 요청/i;
+  if (!requestHint.test(text)) return false;
+
+  const warningFixPair = /\b(fix|resolve|address|patch|remediate|correct)\b[\s\S]{0,60}\b(warning|warnings|medium|low|minor|non-critical|lint)\b|\b(warning|warnings|medium|low|minor|non-critical|lint)\b[\s\S]{0,60}\b(fix|resolve|address|patch|remediate|correct)\b|(?:경고|워닝|미디엄|로우|마이너|사소|비치명|린트)[\s\S]{0,40}(?:수정|고쳐|해결|반영|조치)|(?:수정|고쳐|해결|반영|조치)[\s\S]{0,40}(?:경고|워닝|미디엄|로우|마이너|사소|비치명|린트)/i;
+  return warningFixPair.test(text);
+}
+
+function buildMvpCodeReviewPolicyBlock(allowWarningFix: boolean): string {
+  const lines = [...MVP_CODE_REVIEW_POLICY_BASE_LINES];
+  if (allowWarningFix) lines.push(WARNING_FIX_OVERRIDE_LINE);
+  return lines.join("\n");
+}
+
+function buildTaskExecutionPrompt(
+  parts: Array<string | null | undefined>,
+  opts: { allowWarningFix?: boolean } = {},
+): string {
+  return [...parts, buildMvpCodeReviewPolicyBlock(Boolean(opts.allowWarningFix))].filter(Boolean).join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // Project context generation (token-saving: static analysis, cached by git HEAD)
 // ---------------------------------------------------------------------------
@@ -4838,7 +4871,7 @@ function startTaskExecutionForAgent(
   const roleLabel = { team_leader: "Team Leader", senior: "Senior", junior: "Junior", intern: "Intern" }[execAgent.role] || execAgent.role;
   const deptConstraint = deptId ? getDeptRoleConstraint(deptId, deptName) : "";
   const conversationCtx = getRecentConversationContext(execAgent.id);
-  const spawnPrompt = [
+  const spawnPrompt = buildTaskExecutionPrompt([
     `[Task] ${taskData.title}`,
     taskData.description ? `\n${taskData.description}` : "",
     conversationCtx,
@@ -4847,7 +4880,9 @@ function startTaskExecutionForAgent(
     execAgent.personality ? `Personality: ${execAgent.personality}` : "",
     deptConstraint,
     `Please complete the task above thoroughly. Use the conversation context above if relevant.`,
-  ].filter(Boolean).join("\n");
+  ], {
+    allowWarningFix: hasExplicitWarningFixRequest(taskData.title, taskData.description),
+  });
 
   appendTaskLog(taskId, "system", `RUN start (agent=${execAgent.name}, provider=${provider})`);
   if (provider === "copilot" || provider === "antigravity") {
@@ -5694,7 +5729,13 @@ app.post("/api/agents/:id/spawn", (req, res) => {
   const projectPath = task.project_path || process.cwd();
   const logPath = path.join(logsDir, `${taskId}.log`);
 
-  const prompt = `${task.title}\n\n${task.description || ""}`;
+  const prompt = buildTaskExecutionPrompt([
+    `[Task] ${task.title}`,
+    task.description ? `\n${task.description}` : "",
+    "Please complete the task above thoroughly.",
+  ], {
+    allowWarningFix: hasExplicitWarningFixRequest(task.title, task.description),
+  });
 
   appendTaskLog(taskId, "system", `RUN start (agent=${agent.name}, provider=${provider})`);
 
@@ -6288,7 +6329,7 @@ app.post("/api/tasks/:id/run", (req, res) => {
     ? `\n[Sub-agent model preference] When spawning sub-agents (Task tool), prefer using model: ${subModel}${subReasoningLevel ? ` with reasoning effort: ${subReasoningLevel}` : ""}`
     : "";
 
-  const prompt = [
+  const prompt = buildTaskExecutionPrompt([
     projectContext ? `[Project Structure]\n${projectContext.length > 4000 ? projectContext.slice(0, 4000) + "\n... (truncated)" : projectContext}` : "",
     recentChanges ? `[Recent Changes]\n${recentChanges}` : "",
     `[Task] ${task.title}`,
@@ -6302,8 +6343,9 @@ app.post("/api/tasks/:id/run", (req, res) => {
     subtaskInstruction,
     subModelHint,
     `Please complete the task above thoroughly. Use the conversation context and project structure above if relevant. Do NOT spend time exploring the project structure — it is already provided above.`,
-    `\n[Code Review Policy / 코드 리뷰 정책] This is MVP stage — ship fast.\n- CRITICAL/HIGH: Fix immediately / 즉시 수정\n- MEDIUM/LOW: Do NOT fix. Report as warnings only (document for future maintenance) / 수정하지 말고 경고 보고서로만 정리 (추후 보수 항목으로 문서화)`,
-  ].filter(Boolean).join("\n");
+  ], {
+    allowWarningFix: hasExplicitWarningFixRequest(task.title, task.description),
+  });
 
   appendTaskLog(id, "system", `RUN start (agent=${agent.name}, provider=${provider})`);
 
@@ -7378,7 +7420,7 @@ function buildSubtaskDelegationPrompt(
     ["先理解项目全局上下文，再只执行你负责的范围。"],
   ), lang);
 
-  return [
+  return buildTaskExecutionPrompt([
     header,
     ``,
     `${originalTaskLabel}: ${parentTask.title}`,
@@ -7398,7 +7440,14 @@ function buildSubtaskDelegationPrompt(
     deptConstraint,
     ``,
     finalInstruction,
-  ].filter(Boolean).join("\n");
+  ], {
+    allowWarningFix: hasExplicitWarningFixRequest(
+      parentTask.title,
+      parentTask.description,
+      subtask.title,
+      subtask.description,
+    ),
+  });
 }
 
 /**
@@ -8055,7 +8104,7 @@ function startCrossDeptCooperation(
         const roleLabel = { team_leader: "Team Leader", senior: "Senior", junior: "Junior", intern: "Intern" }[execAgent.role] || execAgent.role;
         const deptConstraint = getDeptRoleConstraint(crossDeptId, crossDeptName);
         const crossConversationCtx = getRecentConversationContext(execAgent.id);
-        const spawnPrompt = [
+        const spawnPrompt = buildTaskExecutionPrompt([
           `[Task] ${crossTaskData.title}`,
           crossTaskData.description ? `\n${crossTaskData.description}` : "",
           crossConversationCtx,
@@ -8064,7 +8113,9 @@ function startCrossDeptCooperation(
           execAgent.personality ? `Personality: ${execAgent.personality}` : "",
           deptConstraint,
           `Please complete the task above thoroughly. Use the conversation context above if relevant.`,
-        ].filter(Boolean).join("\n");
+        ], {
+          allowWarningFix: hasExplicitWarningFixRequest(crossTaskData.title, crossTaskData.description),
+        });
 
         appendTaskLog(crossTaskId, "system", `RUN start (agent=${execAgent.name}, provider=${execProvider})`);
         const crossModelConfig = getProviderModelConfig();

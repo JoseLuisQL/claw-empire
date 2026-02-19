@@ -58,7 +58,8 @@ Claw-Empire는 CLI 기반 AI 코딩 어시스턴트 — **Claude Code**, **Codex
 - 에이전트 토큰 최적화: 프로젝트 구조를 자동 분석하여 에이전트 프롬프트에 주입 (git HEAD 기준 캐시)
 - 에이전트 간 변경사항 공유: 에이전트 B 투입 시 에이전트 A의 최근 변경사항을 git log 및 worktree diff stat으로 자동 전달
 - Claude Code 에이전트용 `CLAUDE.md` 자동 생성 (기존 CLAUDE.md가 있는 프로젝트는 건드리지 않음)
-- 이중언어(EN/KO) MVP 코드 리뷰 정책: CRITICAL/HIGH만 즉시 수정, MEDIUM/LOW는 경고 보고서로만 정리
+- run/spawn/협업/위임 프롬프트 전 경로에 공통 MVP 코드 리뷰 정책 블록 적용 (기본: CRITICAL/HIGH 즉시 수정, MEDIUM/LOW 경고 보고서)
+- 경고 수정 예외 override: 사용자 요청으로 경고 레벨 수정이 명시되면(또는 `[ALLOW_WARNING_FIX]` / `[WARN_FIX]` 포함) 요청된 MEDIUM/LOW 항목은 수정 가능
 - 상세 문서: [`docs/releases/v1.0.2.md`](docs/releases/v1.0.2.md)
 
 ---

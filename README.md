@@ -58,7 +58,8 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 - Agent token optimization: auto-generated project context injected into agent prompts (cached by git HEAD)
 - Cross-agent change awareness: Agent B automatically receives Agent A's recent changes via git log and worktree diff stats
 - Auto-generated `CLAUDE.md` in worktrees for Claude Code agents (skips projects with existing CLAUDE.md)
-- Bilingual MVP code review policy injected into all agent prompts (CRITICAL/HIGH fix, MEDIUM/LOW report only)
+- Shared MVP code review policy block across run/spawn/collaboration/delegation prompts (CRITICAL/HIGH fix, MEDIUM/LOW report only by default)
+- Explicit warning-fix override: when users request warning-level fixes (or include `[ALLOW_WARNING_FIX]` / `[WARN_FIX]`), requested MEDIUM/LOW items may be fixed
 - Full notes: [`docs/releases/v1.0.2.md`](docs/releases/v1.0.2.md)
 
 ---

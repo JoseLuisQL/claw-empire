@@ -58,7 +58,8 @@ Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude
 - エージェントトークン最適化: プロジェクト構造を自動分析してエージェントプロンプトに注入（git HEADベースのキャッシュ）
 - エージェント間変更共有: エージェントB投入時にエージェントAの最新変更をgit logとworktree diff statで自動伝達
 - Claude Codeエージェント用 `CLAUDE.md` 自動生成（既存のCLAUDE.mdがあるプロジェクトはスキップ）
-- バイリンガル（EN/KO）MVPコードレビューポリシー: CRITICAL/HIGHのみ即時修正、MEDIUM/LOWは警告レポートのみ
+- run/spawn/協業/委任の全プロンプトで共通MVPコードレビューポリシーブロックを適用（既定: CRITICAL/HIGH即時修正、MEDIUM/LOWは警告レポート）
+- 警告修正の例外override: ユーザーが警告レベル修正を明示（または `[ALLOW_WARNING_FIX]` / `[WARN_FIX]` を含む）した場合、指定されたMEDIUM/LOW項目は修正可能
 - 詳細: [`docs/releases/v1.0.2.md`](docs/releases/v1.0.2.md)
 
 ---
