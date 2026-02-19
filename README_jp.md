@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.3-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.4-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.0.3.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.0.4.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -53,14 +53,19 @@ Claw-EmpireはCLIベースのAIコーディングアシスタント — **Claude
 
 ---
 
-## 最新リリース (v1.0.3)
+## 最新リリース (v1.0.4)
 
-- `/api/messages` `/api/announcements` `/api/directives` `/api/inbox` の冪等重複抑止をエンドツーエンドで強化
-- クライアント送信APIに `postWithIdempotency()`（タイムアウト + バックオフ/ジッター再試行）を適用
-- エンドポイントスコープ付き冪等キーhashでルート間キー衝突を防止
-- セキュリティ監査ログチェーン検証コマンドを追加: `npm run audit:verify`
-- レビューワークフローのガードレールで補完ループを制限し、重複保留ラウンドを強制最終化
-- 詳細: [`docs/releases/v1.0.3.md`](docs/releases/v1.0.3.md)
+- レビューフローを3段階に固定: Round1は1回の一括補完、Round2は統合/マージ、Round3は最終判定
+- タスクごとの補完要請は1回に制限し、Round1の反復ループを停止
+- サブタスク生成直後に企画リーダーが部署配分を再判定・再配置
+- 同一部署サブタスクは `1.`, `2.`, `3.` の順次チェックリスト付き一括委任で処理
+- バッチ完了時に紐づくサブタスクをまとめて完了/失敗処理し、再レビュー往復を削減
+- レビュー/最終報告で、補完事項と協業事項の完了数を明示するように更新
+- 一時停止はブレーク（SIGINT相当）で中断し、再開時は同一セッション文脈で継続
+- 協業子タスクは `review` で待機し、全子タスクがレビュー到達後に親タスク側で1回の会議で最終マージ判定
+- 実行プロセスが存在しない孤立 `in_progress` 状態を自動回復するウォッチドッグを追加
+- Planned 協業サブタスクは会議補完ノートで実際に識別された部署のみ生成（単純言及による誤検出を防止）
+- 詳細: [`docs/releases/v1.0.4.md`](docs/releases/v1.0.4.md)
 
 ---
 

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.3-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.4-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.0.3.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.0.4.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -53,14 +53,19 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 
 ---
 
-## 最新发布 (v1.0.3)
+## 最新发布 (v1.0.4)
 
-- 对 `/api/messages`、`/api/announcements`、`/api/directives`、`/api/inbox` 的幂等去重链路做了端到端加固
-- 客户端发送 API 接入 `postWithIdempotency()`（超时 + 指数退避/抖动重试）
-- 新增按端点作用域的幂等键哈希，避免跨路由键冲突
-- 新增安全审计日志链校验命令：`npm run audit:verify`
-- 评审流程护栏用于限制补正循环，并在重复保留轮次强制进入最终决策
-- 详细说明：[`docs/releases/v1.0.3.md`](docs/releases/v1.0.3.md)
+- 评审流程固定为三阶段：Round1 单次批量整改、Round2 汇总/合并、Round3 最终判定
+- 每个任务的整改请求上限为 1 次批量，避免 Round1 反复循环
+- 子任务创建后由规划负责人再次判定并重分配部门归属
+- 同一部门子任务改为一次批量委派，并按 `1.`、`2.`、`3.` 顺序清单执行
+- 批量任务完成时会统一回写关联子任务状态，减少反复评审与返工
+- 评审/最终报告现会显式展示整改事项与协作事项的完成数量
+- 暂停改为“中断式（SIGINT 类）”处理，恢复时保持同一任务会话上下文继续执行
+- 协作子任务会停在 `review`，待全部协作子任务到达评审检查点后，由父任务一次会议完成最终合并判定
+- 新增孤立 `in_progress` 看门狗：当无存活执行进程时自动恢复任务状态
+- Planned 协作子任务仅基于会议补充项中实际识别到的部门生成（避免仅因文本提及产生误分配）
+- 详细说明：[`docs/releases/v1.0.4.md`](docs/releases/v1.0.4.md)
 
 ---
 

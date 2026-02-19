@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.3-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.4-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#ai-installation-guide">AI Install Guide</a> &middot;
-  <a href="docs/releases/v1.0.3.md">Release Notes</a> &middot;
+  <a href="docs/releases/v1.0.4.md">Release Notes</a> &middot;
   <a href="#openclaw-integration">OpenClaw</a> &middot;
   <a href="#dollar-command-logic">$ Command</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -53,14 +53,19 @@ Claw-Empire transforms your CLI-based AI coding assistants — **Claude Code**, 
 
 ---
 
-## Latest Release (v1.0.3)
+## Latest Release (v1.0.4)
 
-- End-to-end idempotent delivery hardened for `/api/messages`, `/api/announcements`, `/api/directives`, and `/api/inbox`
-- Client send APIs now use `postWithIdempotency()` with timeout + retry backoff/jitter for transient failures
-- Endpoint-scoped idempotency hashing added to prevent cross-route key collisions
-- Security audit chain verification command added: `npm run audit:verify`
-- Review workflow guardrails added to cap revision loops and force finalization on duplicate-only blocker rounds
-- Full notes: [`docs/releases/v1.0.3.md`](docs/releases/v1.0.3.md)
+- Review workflow is fixed to 3 stages: Round1 single remediation batch, Round2 merge synthesis, Round3 final decision
+- Remediation requests are capped to one batch per task to stop repeated Round1 loops
+- Planning team leader now re-judges and reroutes subtask department assignments after subtask creation
+- Same-department subtasks are delegated as one batched request with ordered checklist execution (`1.`, `2.`, `3.`)
+- Batch completion updates linked subtasks together, reducing repeated review/rework cycles
+- Review/final reports now explicitly show remediation vs collaboration completion counts
+- Pause now applies a break-style interrupt (SIGINT-like), and resume continues with task-session continuity
+- Collaboration child tasks now wait in `review`; parent review starts once all collaboration children reach review checkpoints, then finalizes merge in one decision
+- Added an orphan `in_progress` watchdog to auto-recover tasks when no live process exists
+- Planned collaboration subtasks are now seeded only from concrete planning notes (prevents mention-only false department inclusion)
+- Full notes: [`docs/releases/v1.0.4.md`](docs/releases/v1.0.4.md)
 
 ---
 
