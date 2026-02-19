@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.1-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.2-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.0.1.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.0.2.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -53,16 +53,13 @@ Claw-Empire 将您的 CLI AI 编程助手 —— **Claude Code**、**Codex CLI**
 
 ---
 
-## 最新发布 (v1.0.1)
+## 最新发布 (v1.0.2)
 
-- 多 OAuth 账号池：支持多账号同时启用、自动切换 ON/OFF、按账号设置模型覆盖/优先级
-- 办公室代理级 OAuth 账号选择：Copilot/Antigravity 执行时按所选账号路由
-- 对单个工作者的 1:1 聊天指令现在会触发可执行的任务流程，而不只是确认回复
-- 新增 OAuth 账号默认标签改为顺序命名：`Copi-1`, `Copi-2`, `Anti-1`, `Anti-2`
-- 新增移动端办公室控制：右下虚拟方向键 + 底部中间 `Enter` 按钮
-- 移动端 CEO 视口跟随优化：移动时支持横向/纵向双轴自动跟随
-- CEO 移动速度提升到 `3.5`，手动导航更流畅
-- 详细说明：[`docs/releases/v1.0.1.md`](docs/releases/v1.0.1.md)
+- 代理令牌优化：自动分析项目结构并注入代理提示词（基于 git HEAD 缓存）
+- 跨代理变更感知：代理 B 投入时自动接收代理 A 的最新变更（通过 git log 和 worktree diff stat）
+- Claude Code 代理自动生成 `CLAUDE.md`（已有 CLAUDE.md 的项目不受影响）
+- 双语（EN/KO）MVP 代码审查策略：仅 CRITICAL/HIGH 立即修复，MEDIUM/LOW 仅作为警告报告
+- 详细说明：[`docs/releases/v1.0.2.md`](docs/releases/v1.0.2.md)
 
 ---
 

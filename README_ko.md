@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.1-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.2-blue" alt="Version" />
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#빠른-시작">빠른 시작</a> &middot;
   <a href="#ai-installation-guide">AI 설치 가이드</a> &middot;
-  <a href="docs/releases/v1.0.1.md">릴리즈 노트</a> &middot;
+  <a href="docs/releases/v1.0.2.md">릴리즈 노트</a> &middot;
   <a href="#openclaw-integration">OpenClaw 연동</a> &middot;
   <a href="#dollar-command-logic">$ 명령 로직</a> &middot;
   <a href="#주요-기능">주요 기능</a> &middot;
@@ -53,16 +53,13 @@ Claw-Empire는 CLI 기반 AI 코딩 어시스턴트 — **Claude Code**, **Codex
 
 ---
 
-## 최신 릴리즈 (v1.0.1)
+## 최신 릴리즈 (v1.0.2)
 
-- 다중 OAuth 계정 풀: 여러 계정 동시 활성, 자동 스왑 ON/OFF, 계정별 모델 오버라이드/우선순위
-- 오피스 에이전트 단위 OAuth 계정 선택: Copilot/Antigravity 실행 시 선택 계정 우선 사용
-- 작업자 1:1 채팅 지시가 실제 Task 생성/실행 플로우로 연결되도록 개선
-- 신규 OAuth 계정 기본 라벨을 순번화: `Copi-1`, `Copi-2`, `Anti-1`, `Anti-2`
-- 모바일 오피스 조작 추가: 우측 하단 가상 방향 패드 + 하단 중앙 `Enter` 버튼
-- 모바일 CEO 화면 추적 개선: 이동 시 가로/세로 모두 뷰포트 자동 추적
-- CEO 이동 속도 `3.5`로 상향 조정
-- 상세 문서: [`docs/releases/v1.0.1.md`](docs/releases/v1.0.1.md)
+- 에이전트 토큰 최적화: 프로젝트 구조를 자동 분석하여 에이전트 프롬프트에 주입 (git HEAD 기준 캐시)
+- 에이전트 간 변경사항 공유: 에이전트 B 투입 시 에이전트 A의 최근 변경사항을 git log 및 worktree diff stat으로 자동 전달
+- Claude Code 에이전트용 `CLAUDE.md` 자동 생성 (기존 CLAUDE.md가 있는 프로젝트는 건드리지 않음)
+- 이중언어(EN/KO) MVP 코드 리뷰 정책: CRITICAL/HIGH만 즉시 수정, MEDIUM/LOW는 경고 보고서로만 정리
+- 상세 문서: [`docs/releases/v1.0.2.md`](docs/releases/v1.0.2.md)
 
 ---
 

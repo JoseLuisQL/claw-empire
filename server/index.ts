@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import { randomUUID, createHash, randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
 import { spawn, execFile, execFileSync, type ChildProcess } from "node:child_process";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { WebSocketServer, WebSocket } from "ws";
 import { fileURLToPath } from "node:url";
 import type { IncomingMessage } from "node:http";
@@ -172,6 +172,25 @@ const db = new DatabaseSync(dbPath);
 db.exec("PRAGMA journal_mode = WAL");
 db.exec("PRAGMA busy_timeout = 3000");
 db.exec("PRAGMA foreign_keys = ON");
+
+function runInTransaction(fn: () => void): void {
+  if (db.isTransaction) {
+    fn();
+    return;
+  }
+  db.exec("BEGIN");
+  try {
+    fn();
+    db.exec("COMMIT");
+  } catch (err) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // ignore rollback failure
+    }
+    throw err;
+  }
+}
 
 const logsDir = process.env.LOGS_DIR ?? path.join(process.cwd(), "logs");
 try {
@@ -658,9 +677,9 @@ function removeActiveOAuthAccount(provider: string, accountId: string): void {
 
 function setOAuthActiveAccounts(provider: string, accountIds: string[]): void {
   const cleaned = Array.from(new Set(accountIds.filter(Boolean)));
-  const run = db.transaction((ids: string[]) => {
+  runInTransaction(() => {
     db.prepare("DELETE FROM oauth_active_accounts WHERE provider = ?").run(provider);
-    if (ids.length === 0) return;
+    if (cleaned.length === 0) return;
     const stmt = db.prepare(`
       INSERT INTO oauth_active_accounts (provider, account_id, updated_at)
       VALUES (?, ?, ?)
@@ -668,12 +687,11 @@ function setOAuthActiveAccounts(provider: string, accountIds: string[]): void {
         updated_at = excluded.updated_at
     `);
     let stamp = nowMs();
-    for (const id of ids) {
+    for (const id of cleaned) {
       stmt.run(provider, id, stamp);
       stamp += 1;
     }
   });
-  run(cleaned);
 }
 
 function ensureOAuthActiveAccount(provider: string): void {
@@ -1364,6 +1382,321 @@ function getWorktreeDiffSummary(projectPath: string, taskId: string): string {
     return stat || "변경사항 없음";
   } catch {
     return "diff 조회 실패";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Project context generation (token-saving: static analysis, cached by git HEAD)
+// ---------------------------------------------------------------------------
+
+const CONTEXT_IGNORE_DIRS = new Set([
+  "node_modules", "dist", "build", ".next", ".nuxt", "out", "__pycache__",
+  ".git", ".climpire-worktrees", ".climpire", "vendor", ".venv", "venv",
+  "coverage", ".cache", ".turbo", ".parcel-cache", "target", "bin", "obj",
+]);
+
+const CONTEXT_IGNORE_FILES = new Set([
+  "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb",
+  ".DS_Store", "Thumbs.db",
+]);
+
+function buildFileTree(dir: string, prefix = "", depth = 0, maxDepth = 4): string[] {
+  if (depth >= maxDepth) return [`${prefix}...`];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  entries = entries
+    .filter(e => !e.isSymbolicLink())
+    .filter(e => !e.name.startsWith(".") || e.name === ".env.example")
+    .filter(e => !CONTEXT_IGNORE_DIRS.has(e.name) && !CONTEXT_IGNORE_FILES.has(e.name))
+    .sort((a, b) => {
+      if (a.isDirectory() && !b.isDirectory()) return -1;
+      if (!a.isDirectory() && b.isDirectory()) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+  const lines: string[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    const isLast = i === entries.length - 1;
+    const connector = isLast ? "└── " : "├── ";
+    const childPrefix = isLast ? "    " : "│   ";
+    if (e.isDirectory()) {
+      lines.push(`${prefix}${connector}${e.name}/`);
+      lines.push(...buildFileTree(path.join(dir, e.name), prefix + childPrefix, depth + 1, maxDepth));
+    } else {
+      lines.push(`${prefix}${connector}${e.name}`);
+    }
+  }
+  return lines;
+}
+
+function detectTechStack(projectPath: string): string[] {
+  const stack: string[] = [];
+  try {
+    const pkgPath = path.join(projectPath, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+      const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+      const sv = (v: unknown) => String(v ?? "").replace(/[\n\r]/g, "").slice(0, 20);
+      if (allDeps.react) stack.push(`React ${sv(allDeps.react)}`);
+      if (allDeps.next) stack.push(`Next.js ${sv(allDeps.next)}`);
+      if (allDeps.vue) stack.push(`Vue ${sv(allDeps.vue)}`);
+      if (allDeps.svelte) stack.push("Svelte");
+      if (allDeps.express) stack.push("Express");
+      if (allDeps.fastify) stack.push("Fastify");
+      if (allDeps.typescript) stack.push("TypeScript");
+      if (allDeps.tailwindcss) stack.push("Tailwind CSS");
+      if (allDeps.vite) stack.push("Vite");
+      if (allDeps.webpack) stack.push("Webpack");
+      if (allDeps.prisma || allDeps["@prisma/client"]) stack.push("Prisma");
+      if (allDeps.drizzle) stack.push("Drizzle");
+      const runtime = pkg.engines?.node ? `Node.js ${sv(pkg.engines.node)}` : "Node.js";
+      if (!stack.some(s => s.startsWith("Node"))) stack.unshift(runtime);
+    }
+  } catch { /* ignore parse errors */ }
+  try { if (fs.existsSync(path.join(projectPath, "requirements.txt"))) stack.push("Python"); } catch {}
+  try { if (fs.existsSync(path.join(projectPath, "go.mod"))) stack.push("Go"); } catch {}
+  try { if (fs.existsSync(path.join(projectPath, "Cargo.toml"))) stack.push("Rust"); } catch {}
+  try { if (fs.existsSync(path.join(projectPath, "pom.xml"))) stack.push("Java (Maven)"); } catch {}
+  try { if (fs.existsSync(path.join(projectPath, "build.gradle")) || fs.existsSync(path.join(projectPath, "build.gradle.kts"))) stack.push("Java (Gradle)"); } catch {}
+  return stack;
+}
+
+function getKeyFiles(projectPath: string): string[] {
+  const keyPatterns = [
+    "package.json", "tsconfig.json", "vite.config.ts", "vite.config.js",
+    "next.config.js", "next.config.ts", "webpack.config.js",
+    "Dockerfile", "docker-compose.yml", "docker-compose.yaml",
+    ".env.example", "Makefile", "CMakeLists.txt",
+  ];
+  const result: string[] = [];
+
+  // Key config files
+  for (const p of keyPatterns) {
+    const fullPath = path.join(projectPath, p);
+    try {
+      if (fs.existsSync(fullPath)) {
+        const stat = fs.statSync(fullPath);
+        result.push(`${p} (${stat.size} bytes)`);
+      }
+    } catch {}
+  }
+
+  // Key source directories - count files
+  const srcDirs = ["src", "server", "app", "lib", "pages", "components", "api"];
+  for (const d of srcDirs) {
+    const dirPath = path.join(projectPath, d);
+    try {
+      if (fs.statSync(dirPath).isDirectory()) {
+        let count = 0;
+        const countFiles = (dir: string, depth = 0) => {
+          if (depth > 10) return;
+          const entries = fs.readdirSync(dir, { withFileTypes: true });
+          for (const e of entries) {
+            if (CONTEXT_IGNORE_DIRS.has(e.name) || e.isSymbolicLink()) continue;
+            if (e.isDirectory()) countFiles(path.join(dir, e.name), depth + 1);
+            else count++;
+          }
+        };
+        countFiles(dirPath);
+        result.push(`${d}/ (${count} files)`);
+      }
+    } catch {}
+  }
+
+  return result;
+}
+
+function generateProjectContext(projectPath: string): string {
+  const climpireDir = path.join(projectPath, ".climpire");
+  const contextPath = path.join(climpireDir, "project-context.md");
+  const metaPath = path.join(climpireDir, "project-context.meta");
+
+  // Cache check: compare git HEAD
+  if (isGitRepo(projectPath)) {
+    try {
+      const currentHead = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: projectPath, stdio: "pipe", timeout: 5000,
+      }).toString().trim();
+
+      if (fs.existsSync(metaPath) && fs.existsSync(contextPath)) {
+        const cachedHead = fs.readFileSync(metaPath, "utf8").trim();
+        if (cachedHead === currentHead) {
+          return fs.readFileSync(contextPath, "utf8");
+        }
+      }
+
+      // Generate fresh context
+      const content = buildProjectContextContent(projectPath);
+
+      // Write cache
+      fs.mkdirSync(climpireDir, { recursive: true });
+      fs.writeFileSync(contextPath, content, "utf8");
+      fs.writeFileSync(metaPath, currentHead, "utf8");
+      console.log(`[Claw-Empire] Generated project context: ${contextPath}`);
+      return content;
+    } catch (err) {
+      console.warn(`[Claw-Empire] Failed to generate project context: ${err}`);
+    }
+  }
+
+  // Non-git project: TTL-based caching (5 minutes)
+  try {
+    if (fs.existsSync(contextPath)) {
+      const stat = fs.statSync(contextPath);
+      if (Date.now() - stat.mtimeMs < 5 * 60 * 1000) {
+        return fs.readFileSync(contextPath, "utf8");
+      }
+    }
+    const content = buildProjectContextContent(projectPath);
+    fs.mkdirSync(climpireDir, { recursive: true });
+    fs.writeFileSync(contextPath, content, "utf8");
+    return content;
+  } catch {
+    return "";
+  }
+}
+
+function buildProjectContextContent(projectPath: string): string {
+  const sections: string[] = [];
+  const projectName = path.basename(projectPath);
+
+  sections.push(`# Project: ${projectName}\n`);
+
+  // Tech stack
+  const techStack = detectTechStack(projectPath);
+  if (techStack.length) {
+    sections.push(`## Tech Stack\n${techStack.join(", ")}\n`);
+  }
+
+  // File tree
+  const tree = buildFileTree(projectPath);
+  if (tree.length) {
+    sections.push(`## File Structure\n\`\`\`\n${tree.join("\n")}\n\`\`\`\n`);
+  }
+
+  // Key files
+  const keyFiles = getKeyFiles(projectPath);
+  if (keyFiles.length) {
+    sections.push(`## Key Files\n${keyFiles.map(f => `- ${f}`).join("\n")}\n`);
+  }
+
+  // README excerpt
+  for (const readmeName of ["README.md", "readme.md", "README.rst"]) {
+    const readmePath = path.join(projectPath, readmeName);
+    try {
+      if (fs.existsSync(readmePath)) {
+        const lines = fs.readFileSync(readmePath, "utf8").split("\n").slice(0, 20);
+        sections.push(`## README (first 20 lines)\n${lines.join("\n")}\n`);
+        break;
+      }
+    } catch {}
+  }
+
+  return sections.join("\n");
+}
+
+function getRecentChanges(projectPath: string, taskId: string): string {
+  const parts: string[] = [];
+
+  // 1. Recent commits (git log --oneline -10)
+  if (isGitRepo(projectPath)) {
+    try {
+      const log = execFileSync("git", ["log", "--oneline", "-10"], {
+        cwd: projectPath, stdio: "pipe", timeout: 5000,
+      }).toString().trim();
+      if (log) parts.push(`### Recent Commits\n${log}`);
+    } catch {}
+
+    // 2. Active worktree branch diff stats
+    try {
+      const worktreeList = execFileSync("git", ["worktree", "list", "--porcelain"], {
+        cwd: projectPath, stdio: "pipe", timeout: 5000,
+      }).toString().trim();
+
+      const currentBranch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+        cwd: projectPath, stdio: "pipe", timeout: 5000,
+      }).toString().trim();
+
+      const worktreeLines: string[] = [];
+      const blocks = worktreeList.split("\n\n");
+      for (const block of blocks) {
+        const branchMatch = block.match(/branch refs\/heads\/(climpire\/[^\s]+)/);
+        if (branchMatch) {
+          const branch = branchMatch[1];
+          try {
+            const stat = execFileSync("git", ["diff", `${currentBranch}...${branch}`, "--stat", "--stat-width=60"], {
+              cwd: projectPath, stdio: "pipe", timeout: 5000,
+            }).toString().trim();
+            if (stat) worktreeLines.push(`  ${branch}:\n${stat}`);
+          } catch {}
+        }
+      }
+      if (worktreeLines.length) {
+        parts.push(`### Active Worktree Changes (other agents)\n${worktreeLines.join("\n")}`);
+      }
+    } catch {}
+  }
+
+  // 3. Recently completed tasks for this project
+  try {
+    const recentTasks = db.prepare(`
+      SELECT t.id, t.title, a.name AS agent_name, t.updated_at FROM tasks t
+      LEFT JOIN agents a ON t.assigned_agent_id = a.id
+      WHERE t.project_path = ? AND t.status = 'done' AND t.id != ?
+      ORDER BY t.updated_at DESC LIMIT 3
+    `).all(projectPath, taskId) as Array<{
+      id: string; title: string; agent_name: string | null; updated_at: number;
+    }>;
+
+    if (recentTasks.length) {
+      const taskLines = recentTasks.map(t => `- ${t.title} (by ${t.agent_name || "unknown"})`);
+      parts.push(`### Recently Completed Tasks\n${taskLines.join("\n")}`);
+    }
+  } catch {}
+
+  if (!parts.length) return "";
+  return parts.join("\n\n");
+}
+
+function ensureClaudeMd(projectPath: string, worktreePath: string): void {
+  // Don't touch projects that already have CLAUDE.md
+  if (fs.existsSync(path.join(projectPath, "CLAUDE.md"))) return;
+
+  const climpireDir = path.join(projectPath, ".climpire");
+  const claudeMdSrc = path.join(climpireDir, "CLAUDE.md");
+  const claudeMdDst = path.join(worktreePath, "CLAUDE.md");
+
+  // Generate abbreviated CLAUDE.md if not cached
+  if (!fs.existsSync(claudeMdSrc)) {
+    const techStack = detectTechStack(projectPath);
+    const keyFiles = getKeyFiles(projectPath);
+    const projectName = path.basename(projectPath);
+
+    const content = [
+      `# ${projectName}`,
+      "",
+      techStack.length ? `**Stack:** ${techStack.join(", ")}` : "",
+      "",
+      keyFiles.length ? `**Key files:** ${keyFiles.slice(0, 10).join(", ")}` : "",
+      "",
+      "This file was auto-generated by Claw Empire to provide project context.",
+    ].filter(Boolean).join("\n");
+
+    fs.mkdirSync(climpireDir, { recursive: true });
+    fs.writeFileSync(claudeMdSrc, content, "utf8");
+    console.log(`[Claw-Empire] Generated CLAUDE.md: ${claudeMdSrc}`);
+  }
+
+  // Copy to worktree root
+  try {
+    fs.copyFileSync(claudeMdSrc, claudeMdDst);
+  } catch (err) {
+    console.warn(`[Claw-Empire] Failed to copy CLAUDE.md to worktree: ${err}`);
   }
 }
 
@@ -3831,7 +4164,7 @@ function getAllActiveTeamLeaders(): AgentRow[] {
     LEFT JOIN departments d ON a.department_id = d.id
     WHERE a.role = 'team_leader' AND a.status != 'offline'
     ORDER BY d.sort_order ASC, a.name ASC
-  `).all() as AgentRow[];
+  `).all() as unknown as AgentRow[];
 }
 
 function getTaskRelatedDepartmentIds(taskId: string, fallbackDeptId: string | null): string[] {
@@ -5319,7 +5652,7 @@ app.patch("/api/agents/:id", (req, res) => {
   }
 
   params.push(id);
-  db.prepare(`UPDATE agents SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+  db.prepare(`UPDATE agents SET ${updates.join(", ")} WHERE id = ?`).run(...(params as SQLInputValue[]));
 
   const updated = db.prepare("SELECT * FROM agents WHERE id = ?").get(id);
   broadcast("agent_status", updated);
@@ -5472,7 +5805,7 @@ app.get("/api/tasks", (req, res) => {
     LEFT JOIN departments d ON t.department_id = d.id
     ${where}
     ORDER BY t.priority DESC, t.updated_at DESC
-  `).all(...params);
+  `).all(...(params as SQLInputValue[]));
 
   res.json({ tasks });
 });
@@ -5581,12 +5914,12 @@ app.get("/api/tasks/:id/meeting-minutes", (req, res) => {
 
   const meetings = db.prepare(
     `SELECT * FROM meeting_minutes WHERE task_id IN (${taskIds.map(() => '?').join(',')}) ORDER BY started_at DESC, round DESC`
-  ).all(...taskIds) as MeetingMinutesRow[];
+  ).all(...taskIds) as unknown as MeetingMinutesRow[];
 
   const data = meetings.map((meeting) => {
     const entries = db.prepare(
       "SELECT * FROM meeting_minute_entries WHERE meeting_id = ? ORDER BY seq ASC, id ASC"
-    ).all(meeting.id) as MeetingMinuteEntryRow[];
+    ).all(meeting.id) as unknown as MeetingMinuteEntryRow[];
     return { ...meeting, entries };
   });
 
@@ -5625,7 +5958,7 @@ app.patch("/api/tasks/:id", (req, res) => {
   }
 
   params.push(id);
-  db.prepare(`UPDATE tasks SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+  db.prepare(`UPDATE tasks SET ${updates.join(", ")} WHERE id = ?`).run(...(params as SQLInputValue[]));
 
   const nextStatus = typeof body.status === "string" ? body.status : null;
   if (nextStatus && (nextStatus === "cancelled" || nextStatus === "pending" || nextStatus === "done" || nextStatus === "inbox")) {
@@ -5763,7 +6096,7 @@ app.patch("/api/subtasks/:id", (req, res) => {
   if (updates.length === 0) return res.status(400).json({ error: "no_fields" });
 
   params.push(id);
-  db.prepare(`UPDATE subtasks SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+  db.prepare(`UPDATE subtasks SET ${updates.join(", ")} WHERE id = ?`).run(...(params as SQLInputValue[]));
 
   const subtask = db.prepare("SELECT * FROM subtasks WHERE id = ?").get(id);
   broadcast("subtask_update", subtask);
@@ -5915,6 +6248,15 @@ app.post("/api/tasks/:id/run", (req, res) => {
     appendTaskLog(id, "system", `Git worktree created: ${worktreePath} (branch: climpire/${id.slice(0, 8)})`);
   }
 
+  // Generate project context (cached by git HEAD) and recent changes
+  const projectContext = generateProjectContext(projectPath);
+  const recentChanges = getRecentChanges(projectPath, id);
+
+  // For Claude provider: ensure CLAUDE.md exists in worktree
+  if (worktreePath && provider === "claude") {
+    ensureClaudeMd(projectPath, worktreePath);
+  }
+
   // Build rich prompt with agent context + conversation history + role constraint
   const roleLabel = { team_leader: "Team Leader", senior: "Senior", junior: "Junior", intern: "Intern" }[agent.role] || agent.role;
   const deptConstraint = agent.department_id ? getDeptRoleConstraint(agent.department_id, agent.department_name || agent.department_id) : "";
@@ -5947,6 +6289,8 @@ app.post("/api/tasks/:id/run", (req, res) => {
     : "";
 
   const prompt = [
+    projectContext ? `[Project Structure]\n${projectContext.length > 4000 ? projectContext.slice(0, 4000) + "\n... (truncated)" : projectContext}` : "",
+    recentChanges ? `[Recent Changes]\n${recentChanges}` : "",
     `[Task] ${task.title}`,
     task.description ? `\n${task.description}` : "",
     conversationCtx,
@@ -5957,7 +6301,8 @@ app.post("/api/tasks/:id/run", (req, res) => {
     worktreePath ? `NOTE: You are working in an isolated Git worktree branch (climpire/${id.slice(0, 8)}). Commit your changes normally.` : "",
     subtaskInstruction,
     subModelHint,
-    `Please complete the task above thoroughly. Use the conversation context above if relevant.`,
+    `Please complete the task above thoroughly. Use the conversation context and project structure above if relevant. Do NOT spend time exploring the project structure — it is already provided above.`,
+    `\n[Code Review Policy / 코드 리뷰 정책] This is MVP stage — ship fast.\n- CRITICAL/HIGH: Fix immediately / 즉시 수정\n- MEDIUM/LOW: Do NOT fix. Report as warnings only (document for future maintenance) / 수정하지 말고 경고 보고서로만 정리 (추후 보수 항목으로 문서화)`,
   ].filter(Boolean).join("\n");
 
   appendTaskLog(id, "system", `RUN start (agent=${agent.name}, provider=${provider})`);
@@ -6649,7 +6994,7 @@ function scheduleAnnouncementReplies(announcement: string): void {
   const lang = resolveLang(announcement);
   const teamLeaders = db.prepare(
     "SELECT * FROM agents WHERE role = 'team_leader' AND status != 'offline'"
-  ).all() as AgentRow[];
+  ).all() as unknown as AgentRow[];
 
   let delay = 1500; // First reply after 1.5s
   for (const leader of teamLeaders) {
@@ -6924,7 +7269,7 @@ function findBestSubordinate(deptId: string, excludeId: string): AgentRow | null
     `SELECT * FROM agents WHERE department_id = ? AND id != ? AND role != 'team_leader' ORDER BY
        CASE status WHEN 'idle' THEN 0 WHEN 'break' THEN 1 WHEN 'working' THEN 2 ELSE 3 END,
        CASE role WHEN 'senior' THEN 0 WHEN 'junior' THEN 1 WHEN 'intern' THEN 2 ELSE 3 END`
-  ).all(deptId, excludeId) as AgentRow[];
+  ).all(deptId, excludeId) as unknown as AgentRow[];
   return agents[0] ?? null;
 }
 
@@ -7063,7 +7408,7 @@ function buildSubtaskDelegationPrompt(
 function processSubtaskDelegations(taskId: string): void {
   const foreignSubtasks = db.prepare(
     "SELECT * FROM subtasks WHERE task_id = ? AND target_department_id IS NOT NULL AND delegated_task_id IS NULL ORDER BY created_at"
-  ).all(taskId) as SubtaskRow[];
+  ).all(taskId) as unknown as SubtaskRow[];
 
   if (foreignSubtasks.length === 0) return;
 
@@ -7906,7 +8251,7 @@ function pickPlanningReportAssignee(preferredAgentId: string | null): AgentRow |
   const planningAgents = db.prepare(`
     SELECT * FROM agents
     WHERE department_id = 'planning' AND status != 'offline'
-  `).all() as AgentRow[];
+  `).all() as unknown as AgentRow[];
   if (planningAgents.length === 0) return null;
   const claudeAgents = planningAgents.filter((a) => (a.cli_provider || "") === "claude");
   const candidatePool = claudeAgents.length > 0 ? claudeAgents : planningAgents;
@@ -8453,7 +8798,7 @@ app.get("/api/messages", (req, res) => {
     ${where}
     ORDER BY m.created_at DESC
     LIMIT ?
-  `).all(...params);
+  `).all(...(params as SQLInputValue[]));
 
   res.json({ messages: messages.reverse() }); // return in chronological order
 });
@@ -9944,7 +10289,7 @@ app.put("/api/oauth/accounts/:id", (req, res) => {
   }
 
   params.push(id);
-  db.prepare(`UPDATE oauth_accounts SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+  db.prepare(`UPDATE oauth_accounts SET ${updates.join(", ")} WHERE id = ?`).run(...(params as SQLInputValue[]));
   const providerRow = db.prepare("SELECT provider FROM oauth_accounts WHERE id = ?").get(id) as { provider: string };
   ensureOAuthActiveAccount(providerRow.provider);
   res.json({ ok: true });
@@ -10481,13 +10826,12 @@ function pruneDuplicateReviewMeetings(): void {
 
   const delEntries = db.prepare("DELETE FROM meeting_minute_entries WHERE meeting_id = ?");
   const delMeetings = db.prepare("DELETE FROM meeting_minutes WHERE id = ?");
-  const tx = db.transaction((ids: string[]) => {
-    for (const id of ids) {
+  runInTransaction(() => {
+    for (const id of rows.map((r) => r.id)) {
       delEntries.run(id);
       delMeetings.run(id);
     }
   });
-  tx(rows.map((r) => r.id));
 }
 
 function recoverInterruptedWorkflowOnStartup(): void {
