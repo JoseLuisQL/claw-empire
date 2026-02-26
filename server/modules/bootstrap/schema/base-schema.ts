@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS agents (
   oauth_account_id TEXT,
   api_provider_id TEXT,
   api_model TEXT,
+  cli_model TEXT,
+  cli_reasoning_level TEXT,
   avatar_emoji TEXT NOT NULL DEFAULT '🤖',
   sprite_number INTEGER,
   personality TEXT,
@@ -111,6 +113,17 @@ CREATE TABLE IF NOT EXISTS task_logs (
   kind TEXT NOT NULL,
   message TEXT NOT NULL,
   created_at INTEGER DEFAULT (unixepoch()*1000)
+);
+
+CREATE TABLE IF NOT EXISTS task_interrupt_injections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  session_id TEXT NOT NULL,
+  prompt_text TEXT NOT NULL,
+  prompt_hash TEXT NOT NULL,
+  actor_token_hash TEXT,
+  created_at INTEGER DEFAULT (unixepoch()*1000),
+  consumed_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS meeting_minutes (
@@ -300,6 +313,8 @@ CREATE INDEX IF NOT EXISTS idx_projects_recent ON projects(last_used_at DESC, up
 CREATE INDEX IF NOT EXISTS idx_task_creation_audits_task ON task_creation_audits(task_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_task_creation_audits_trigger ON task_creation_audits(trigger, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_task_logs_task ON task_logs(task_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_task_interrupt_injections_task
+  ON task_interrupt_injections(task_id, session_id, consumed_at, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_type, receiver_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_meeting_minutes_task ON meeting_minutes(task_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_meeting_minute_entries_meeting ON meeting_minute_entries(meeting_id, seq ASC);

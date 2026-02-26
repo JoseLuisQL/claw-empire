@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { OAuthStatus } from "../api";
 import * as api from "../api";
 import { localeName, useI18n } from "../i18n";
-import type { Agent, Department, SubAgent, SubTask, Task } from "../types";
+import type { Agent, CliModelInfo, Department, ReasoningLevelOption, SubAgent, SubTask, Task } from "../types";
 import AgentAvatar from "./AgentAvatar";
 import AgentDetailTabContent from "./agent-detail/AgentDetailTabContent";
 import { CLI_LABELS, oauthAccountLabel, roleLabel, STATUS_CONFIG, statusLabel } from "./agent-detail/constants";
@@ -21,6 +21,14 @@ interface AgentDetailProps {
   onOpenTerminal?: (taskId: string) => void;
   onAgentUpdated?: () => void;
 }
+
+const CLI_MODEL_OVERRIDE_PROVIDERS: Agent["cli_provider"][] = ["claude", "codex", "gemini", "opencode"];
+const CODEX_REASONING_FALLBACK_OPTIONS: ReasoningLevelOption[] = [
+  { effort: "low", description: "Faster, lower depth" },
+  { effort: "medium", description: "Balanced default" },
+  { effort: "high", description: "Higher reasoning depth" },
+  { effort: "xhigh", description: "Maximum reasoning depth" },
+];
 
 export default function AgentDetail({
   agent,
@@ -43,9 +51,13 @@ export default function AgentDetail({
   const [selectedOAuthAccountId, setSelectedOAuthAccountId] = useState(agent.oauth_account_id ?? "");
   const [selectedApiProviderId, setSelectedApiProviderId] = useState(agent.api_provider_id ?? "");
   const [selectedApiModel, setSelectedApiModel] = useState(agent.api_model ?? "");
+  const [selectedCliModel, setSelectedCliModel] = useState(agent.cli_model ?? "");
+  const [selectedCliReasoningLevel, setSelectedCliReasoningLevel] = useState(agent.cli_reasoning_level ?? "");
   const [savingCli, setSavingCli] = useState(false);
   const [oauthStatus, setOauthStatus] = useState<OAuthStatus | null>(null);
   const [oauthLoading, setOauthLoading] = useState(false);
+  const [cliModels, setCliModels] = useState<Record<string, CliModelInfo[]>>({});
+  const [cliModelsLoading, setCliModelsLoading] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
   const agentTasks = tasks.filter((task) => task.assigned_agent_id === agent.id);
@@ -69,7 +81,42 @@ export default function AgentDetail({
   }, [oauthProviderKey, oauthStatus]);
   const requiresOAuthAccount = selectedCli === "copilot" || selectedCli === "antigravity";
   const requiresApiProvider = selectedCli === "api";
+  const supportsCliModelOverride = CLI_MODEL_OVERRIDE_PROVIDERS.includes(selectedCli);
+  const selectedCliModelOptions = useMemo(() => cliModels[selectedCli] ?? [], [cliModels, selectedCli]);
+  const selectedCliModelMeta = useMemo(
+    () => selectedCliModelOptions.find((model) => model.slug === selectedCliModel),
+    [selectedCliModelOptions, selectedCliModel],
+  );
+  const codexReasoningOptions = useMemo(() => {
+    if (selectedCli !== "codex") return [];
+    if (selectedCliModelMeta?.reasoningLevels && selectedCliModelMeta.reasoningLevels.length > 0) {
+      return selectedCliModelMeta.reasoningLevels;
+    }
+    return CODEX_REASONING_FALLBACK_OPTIONS;
+  }, [selectedCli, selectedCliModelMeta]);
   const canSaveCli = requiresApiProvider ? false : !requiresOAuthAccount || Boolean(selectedOAuthAccountId);
+  const getReasoningDescription = useCallback(
+    (effort: string, fallback?: string) => {
+      switch (effort) {
+        case "low":
+          return t({ ko: "빠름, 낮은 깊이", en: "Faster, lower depth", ja: "高速・浅い推論", zh: "更快，较浅推理" });
+        case "medium":
+          return t({ ko: "균형 기본값", en: "Balanced default", ja: "バランス既定", zh: "均衡默认" });
+        case "high":
+          return t({ ko: "높은 추론 깊이", en: "Higher reasoning depth", ja: "高い推論深度", zh: "更高推理深度" });
+        case "xhigh":
+          return t({
+            ko: "최대 추론 깊이",
+            en: "Maximum reasoning depth",
+            ja: "最大推論深度",
+            zh: "最高推理深度",
+          });
+        default:
+          return fallback || "";
+      }
+    },
+    [t],
+  );
 
   const xpLevel = Math.floor(agent.stats_xp / 100) + 1;
   const xpProgress = agent.stats_xp % 100;
@@ -79,7 +126,17 @@ export default function AgentDetail({
     setSelectedOAuthAccountId(agent.oauth_account_id ?? "");
     setSelectedApiProviderId(agent.api_provider_id ?? "");
     setSelectedApiModel(agent.api_model ?? "");
-  }, [agent.id, agent.cli_provider, agent.oauth_account_id, agent.api_provider_id, agent.api_model]);
+    setSelectedCliModel(agent.cli_model ?? "");
+    setSelectedCliReasoningLevel(agent.cli_reasoning_level ?? "");
+  }, [
+    agent.id,
+    agent.cli_provider,
+    agent.oauth_account_id,
+    agent.api_provider_id,
+    agent.api_model,
+    agent.cli_model,
+    agent.cli_reasoning_level,
+  ]);
 
   useEffect(() => {
     if (!editingCli || !requiresOAuthAccount) return;
@@ -92,6 +149,25 @@ export default function AgentDetail({
   }, [editingCli, requiresOAuthAccount]);
 
   useEffect(() => {
+    if (!editingCli || !supportsCliModelOverride || Object.keys(cliModels).length > 0) return;
+    let cancelled = false;
+    setCliModelsLoading(true);
+    api
+      .getCliModels()
+      .then((models) => {
+        if (cancelled) return;
+        setCliModels(models);
+      })
+      .catch((err) => console.error("Failed to load CLI models:", err))
+      .finally(() => {
+        if (!cancelled) setCliModelsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editingCli, supportsCliModelOverride, cliModels]);
+
+  useEffect(() => {
     if (!requiresOAuthAccount) {
       if (selectedOAuthAccountId) setSelectedOAuthAccountId("");
       return;
@@ -102,6 +178,23 @@ export default function AgentDetail({
     }
   }, [requiresOAuthAccount, activeOAuthAccounts, selectedOAuthAccountId]);
 
+  useEffect(() => {
+    if (!supportsCliModelOverride && selectedCliModel) {
+      setSelectedCliModel("");
+    }
+  }, [supportsCliModelOverride, selectedCliModel]);
+
+  useEffect(() => {
+    if (selectedCli !== "codex" && selectedCliReasoningLevel) {
+      setSelectedCliReasoningLevel("");
+      return;
+    }
+    if (selectedCli === "codex" && selectedCliReasoningLevel) {
+      const isValid = codexReasoningOptions.some((level) => level.effort === selectedCliReasoningLevel);
+      if (!isValid) setSelectedCliReasoningLevel("");
+    }
+  }, [selectedCli, selectedCliReasoningLevel, codexReasoningOptions]);
+
   const handleSaveCli = useCallback(async () => {
     setSavingCli(true);
     try {
@@ -110,6 +203,8 @@ export default function AgentDetail({
         oauth_account_id: requiresOAuthAccount ? selectedOAuthAccountId || null : null,
         api_provider_id: requiresApiProvider ? selectedApiProviderId || null : null,
         api_model: requiresApiProvider ? selectedApiModel || null : null,
+        cli_model: supportsCliModelOverride ? selectedCliModel || null : null,
+        cli_reasoning_level: selectedCli === "codex" ? selectedCliReasoningLevel || null : null,
       });
       onAgentUpdated?.();
       setEditingCli(false);
@@ -126,6 +221,9 @@ export default function AgentDetail({
     requiresApiProvider,
     selectedApiProviderId,
     selectedApiModel,
+    supportsCliModelOverride,
+    selectedCliModel,
+    selectedCliReasoningLevel,
     onAgentUpdated,
   ]);
 
@@ -135,7 +233,16 @@ export default function AgentDetail({
     setSelectedOAuthAccountId(agent.oauth_account_id ?? "");
     setSelectedApiProviderId(agent.api_provider_id ?? "");
     setSelectedApiModel(agent.api_model ?? "");
-  }, [agent.cli_provider, agent.oauth_account_id, agent.api_provider_id, agent.api_model]);
+    setSelectedCliModel(agent.cli_model ?? "");
+    setSelectedCliReasoningLevel(agent.cli_reasoning_level ?? "");
+  }, [
+    agent.cli_provider,
+    agent.oauth_account_id,
+    agent.api_provider_id,
+    agent.api_model,
+    agent.cli_model,
+    agent.cli_reasoning_level,
+  ]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -163,15 +270,14 @@ export default function AgentDetail({
                 className={agent.status === "working" ? "animate-agent-work" : ""}
               />
               <div
-                className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-800 ${
-                  agent.status === "working"
+                className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-800 ${agent.status === "working"
                     ? "bg-blue-500"
                     : agent.status === "idle"
                       ? "bg-green-500"
                       : agent.status === "break"
                         ? "bg-yellow-500"
                         : "bg-slate-500"
-                }`}
+                  }`}
               />
             </div>
 
@@ -185,7 +291,7 @@ export default function AgentDetail({
               <div className="text-sm text-slate-400 mt-0.5">
                 {department?.icon} {department ? localeName(language, department) : ""} · {roleLabel(agent.role, t)}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+              <div className="text-xs text-slate-500 mt-0.5">
                 {editingCli ? (
                   <>
                     <span>🔧</span>
@@ -208,7 +314,6 @@ export default function AgentDetail({
                             en: "Loading accounts...",
                             ja: "アカウント読み込み中...",
                             zh: "正在加载账号...",
-                            es: "Cargando cuentas...",
                           })}
                         </span>
                       ) : activeOAuthAccounts.length > 0 ? (
@@ -230,7 +335,6 @@ export default function AgentDetail({
                             en: "No active OAuth account",
                             ja: "有効な OAuth アカウントなし",
                             zh: "没有可用的 OAuth 账号",
-                            es: "No hay cuenta OAuth activa",
                           })}
                         </span>
                       ))}
@@ -241,7 +345,6 @@ export default function AgentDetail({
                           en: "⚙️ Assign models in Settings > API tab",
                           ja: "⚙️ 設定 > API タブでモデルを割り当ててください",
                           zh: "⚙️ 请在设置 > API 标签页中分配模型",
-                          es: "⚙️ Asigna modelos en Configuración > pestaña API",
                         })}
                       </span>
                     )}
@@ -252,13 +355,13 @@ export default function AgentDetail({
                       }}
                       className="text-[10px] px-1.5 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors disabled:opacity-50"
                     >
-                      {savingCli ? "..." : t({ ko: "저장", en: "Save", ja: "保存", zh: "保存", es: "Guardar" })}
+                      {savingCli ? "..." : t({ ko: "저장", en: "Save", ja: "保存", zh: "保存" })}
                     </button>
                     <button
                       onClick={handleCancelCliEdit}
                       className="text-[10px] px-1.5 py-0.5 bg-slate-600 hover:bg-slate-500 text-slate-300 rounded transition-colors"
                     >
-                      {t({ ko: "취소", en: "Cancel", ja: "キャンセル", zh: "取消", es: "Cancelar" })}
+                      {t({ ko: "취소", en: "Cancel", ja: "キャンセル", zh: "取消" })}
                     </button>
                   </>
                 ) : (
@@ -276,7 +379,13 @@ export default function AgentDetail({
                     🔧{" "}
                     {agent.cli_provider === "api" && agent.api_model
                       ? `API: ${agent.api_model}`
-                      : (CLI_LABELS[agent.cli_provider] ?? agent.cli_provider)}
+                      : agent.cli_model &&
+                        CLI_MODEL_OVERRIDE_PROVIDERS.includes(agent.cli_provider) &&
+                        agent.cli_provider !== "api"
+                        ? `${CLI_LABELS[agent.cli_provider] ?? agent.cli_provider} · ${agent.cli_model}${agent.cli_provider === "codex" && agent.cli_reasoning_level ? ` (${agent.cli_reasoning_level})` : ""}`
+                        : agent.cli_provider === "codex" && agent.cli_reasoning_level
+                          ? `${CLI_LABELS[agent.cli_provider] ?? agent.cli_provider} · (${agent.cli_reasoning_level})`
+                          : (CLI_LABELS[agent.cli_provider] ?? agent.cli_provider)}
                     <span className="text-[9px] text-slate-600 ml-0.5">✏️</span>
                   </button>
                 )}
@@ -311,9 +420,8 @@ export default function AgentDetail({
             <button
               key={tabItem.key}
               onClick={() => setTab(tabItem.key as typeof tab)}
-              className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
-                tab === tabItem.key ? "text-blue-400 border-b-2 border-blue-400" : "text-slate-400 hover:text-slate-200"
-              }`}
+              className={`flex-1 py-2.5 text-sm font-medium transition-colors ${tab === tabItem.key ? "text-blue-400 border-b-2 border-blue-400" : "text-slate-400 hover:text-slate-200"
+                }`}
             >
               {tabItem.label}
             </button>
