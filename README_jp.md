@@ -10,7 +10,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0-blue" alt="Releases" />
+  <img src="https://img.shields.io/badge/version-1.2.1-blue" alt="Releases" />
+  <a href="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml"><img src="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +21,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.2.0.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.2.1.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -66,15 +67,18 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 
 ---
 
-## 最新リリース (v1.2.0)
+## 最新リリース (v1.2.1)
 
-- **機能アップデート** — 社員/部署CRUD、プロジェクト手動アサイン、委任セーフガード、カスタムスキルアップロードを本格対応。
-- **コードのモジュール化** — 大型化したフロント/バックエンドを機能別フォルダ（`src/components/*`, `server/modules/routes/*`, `server/modules/workflow/*`）へ分割し、保守性とレビュー性を向上。
-- **型負債の解消** — サーバーランタイムの `@ts-nocheck` を除去し、共通型・実行時型の境界を強化して既存動作を維持。
-- **フォーマット標準化** — Prettier 基準（`.prettierrc.json`, `.prettierignore`）と `format`/`format:check` を導入し、CIでフォーマット検証を実施。
-- **テスト拡張 + CI安定化** — `tests/e2e/ci-coverage-gap.spec.ts` を追加し、フロント/バックエンド単体テスト（`src/api`, `useWebSocket`, `usePolling`, `i18n`, `auth`, `hub`, `runtime`, `gateway`）を強化。Playwright CI設定も安定化。
+- **CI強化** - pnpmのバージョン競合を解消し、型チェック/ビルドゲート（`tsc -p tsconfig.json --noEmit`, `pnpm run build`）を明示、workflow権限を最小化しました。
+- **品質ガードレール** - ESLint Flat Config + CI lint を導入し、hidden/bidi Unicode ガードと `lint-staged` による段階的な lint 強化を追加しました。
+- **ランタイム安定化** - 分割ルートの欠落、重複型、文字化けリスクを整理し、App の初期化/ライブ同期ロジックをフックへ分離しました。
+- **テスト/ドキュメント強化** - テストDB分離の安全策を強化し、Swagger/OpenAPI の導線を追加、貢献/CIドキュメントを更新しました。
+- **会議タイムアウト単位の明確化** - `REVIEW_MEETING_ONESHOT_TIMEOUT_MS` の既定値をミリ秒 `65000` に統一し、従来の `65` 形式も後方互換で維持します。
 
-- 詳細: [`docs/releases/v1.2.0.md`](docs/releases/v1.2.0.md)
+- 詳細: [`docs/releases/v1.2.1.md`](docs/releases/v1.2.1.md)
+- APIドキュメント: [`docs/api.md`](docs/api.md), [`docs/openapi.json`](docs/openapi.json)
+- セキュリティポリシー: [`SECURITY.md`](SECURITY.md)
+
 
 ## スクリーンショット
 
@@ -532,6 +536,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 | `OAUTH_GOOGLE_CLIENT_ID`     | 任意                        | Google OAuthクライアントID                                                            |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | 任意                        | Google OAuthクライアントシークレット                                                  |
 | `OPENAI_API_KEY`             | 任意                        | OpenAI APIキー（Codex用）                                                             |
+| `REVIEW_MEETING_ONESHOT_TIMEOUT_MS` | 任意                 | 会議 one-shot タイムアウト（ミリ秒）。既定値 `65000`、後方互換として `600` 以下は秒として解釈 |
 | `UPDATE_CHECK_ENABLED`       | 任意                        | インアプリ更新確認バナーを有効化（デフォルト `1`、`0` で無効）                        |
 | `UPDATE_CHECK_REPO`          | 任意                        | 更新確認に使う GitHub リポジトリスラッグ（デフォルト: `GreenSheep01201/claw-empire`） |
 | `UPDATE_CHECK_TTL_MS`        | 任意                        | 更新確認キャッシュ TTL（ミリ秒、デフォルト: `1800000`）                               |
@@ -554,10 +559,30 @@ pnpm dev                # 0.0.0.0にバインド
 
 # プロダクションビルド
 pnpm build              # TypeScriptチェック + Viteビルド
-pnpm start              # ビルド済みサーバーを起動
+pnpm start              # API/バックエンドサーバーを起動（本番モードでは dist を配信）
 
 # ヘルスチェック
 curl -fsS http://127.0.0.1:8790/healthz
+```
+
+### CI検証（現在のPRパイプライン）
+
+すべての Pull Request で `.github/workflows/ci.yml` は次の順に実行されます。
+
+1. ワークフローファイルの hidden/bidi Unicode ガード
+2. `pnpm install --frozen-lockfile`
+3. `pnpm run format:check`
+4. `pnpm run lint`
+5. `pnpm exec playwright install --with-deps`
+6. `pnpm run test:ci`（`test:web --coverage` + `test:api --coverage` + `test:e2e`）
+
+PR 前のローカル推奨チェック:
+
+```bash
+pnpm run format:check
+pnpm run lint
+pnpm run build
+pnpm run test:ci
 ```
 
 ### 通信QAチェック（v1.1.6）
@@ -635,32 +660,43 @@ CLIモードを利用する場合は、少なくとも一つをインストー�
 
 ```
 claw-empire/
+├── .github/
+│   └── workflows/
+│       └── ci.yml             # PR CI（Unicodeガード、format、lint、test）
 ├── server/
-│   └── index.ts              # Express 5 + SQLite + WebSocketバックエンド
+│   ├── index.ts              # バックエンドエントリポイント
+│   ├── server-main.ts        # ランタイム配線/ブートストラップ
+│   ├── modules/              # routes/workflow/bootstrap lifecycle
+│   ├── test/                 # バックエンドテスト設定/ヘルパー
+│   └── vitest.config.ts      # バックエンド単体テスト設定
 ├── src/
-│   ├── App.tsx                # ルーティング付きメインReactアプリ
-│   ├── api.ts                 # フロントエンドAPIクライアント
-│   ├── i18n.ts                # 多言語サポート（en/ko/ja/zh）
-│   ├── components/
-│   │   ├── OfficeView.tsx     # PixiJSエージェント付きピクセルアートオフィス
-│   │   ├── Dashboard.tsx      # KPIメトリクスとチャート
-│   │   ├── TaskBoard.tsx      # カンバン形式のタスク管理
-│   │   ├── ChatPanel.tsx      # CEO-エージェント間コミュニケーション
-│   │   ├── SettingsPanel.tsx  # 会社・プロバイダー設定
-│   │   ├── SkillsLibrary.tsx  # エージェントスキル管理
-│   │   └── TerminalPanel.tsx  # リアルタイム実行出力ビューアー
-│   ├── hooks/                 # usePolling, useWebSocket
-│   └── types/                 # TypeScript型定義
-├── public/sprites/            # 12種類のピクセルアートエージェントスプライト
+│   ├── app/                  # アプリシェル、レイアウト、状態オーケストレーション
+│   ├── api/                  # フロントエンド API モジュール
+│   ├── components/           # UI（office/taskboard/chat/settings）
+│   ├── hooks/                # polling/websocket フック
+│   ├── test/                 # フロントエンドテスト設定
+│   ├── types/                # フロントエンド型定義
+│   ├── App.tsx
+│   ├── api.ts
+│   └── i18n.ts
+├── tests/
+│   └── e2e/                  # Playwright E2E シナリオ
+├── public/sprites/           # ピクセルアートエージェントスプライト
 ├── scripts/
-│   ├── openclaw-setup.sh      # ワンクリックセットアップ（macOS/Linux）
-│   ├── openclaw-setup.ps1     # ワンクリックセットアップ（Windows PowerShell）
-│   ├── preflight-public.sh    # リリース前セキュリティチェック
+│   ├── setup.mjs             # 環境/ブートストラップ設定
+│   ├── auto-apply-v1.0.5.mjs # 起動時マイグレーション補助
+│   ├── openclaw-setup.sh     # ワンクリックセットアップ（macOS/Linux）
+│   ├── openclaw-setup.ps1    # ワンクリックセットアップ（Windows PowerShell）
+│   ├── prepare-e2e-runtime.mjs
+│   ├── preflight-public.sh   # リリース前セキュリティチェック
 │   └── generate-architecture-report.mjs
-├── install.sh                 # scripts/openclaw-setup.sh のラッパー
-├── install.ps1                # scripts/openclaw-setup.ps1 のラッパー
-├── docs/                      # 設計・アーキテクチャドキュメント
-├── .env.example               # 環境変数テンプレート
+├── install.sh                # scripts/openclaw-setup.sh のラッパー
+├── install.ps1               # scripts/openclaw-setup.ps1 のラッパー
+├── docs/                     # 設計・アーキテクチャドキュメント
+├── AGENTS.md                 # ローカルエージェント/オーケストレーション規則
+├── CONTRIBUTING.md           # ブランチ/PR/レビュー方針
+├── eslint.config.mjs         # Flat ESLint 設定
+├── .env.example              # 環境変数テンプレート
 └── package.json
 ```
 
@@ -678,6 +714,11 @@ Claw-Empireはセキュリティを重視した設計になっています：
 - **プリフライトセキュリティチェック** — 公開リリース前に `pnpm run preflight:public` を実行し、ワーキングツリーとgit履歴の両方で漏洩したシークレットをスキャン
 - **デフォルトでローカルホスト** — 開発サーバーは `127.0.0.1` にバインドされ、ネットワークに公開されない
 
+## APIドキュメント & セキュリティ要約
+
+- **APIドキュメント** — エンドポイント概要/利用方法は [`docs/api.md`](docs/api.md)、スキーマ/ツール連携は [`docs/openapi.json`](docs/openapi.json) を参照してください。
+- **セキュリティポリシー** — 脆弱性報告/方針は [`SECURITY.md`](SECURITY.md) を確認し、公開リリース前は `pnpm run preflight:public` の実行を推奨します。
+
 ---
 
 ## コントリビューション
@@ -685,11 +726,16 @@ Claw-Empireはセキュリティを重視した設計になっています：
 コントリビューションを歓迎します！以下の手順でお願いします：
 
 1. リポジトリをフォーク
-2. フィーチャーブランチを作成（`git checkout -b feature/amazing-feature`）
+2. `dev` を基準にフィーチャーブランチを作成（`git checkout -b feature/amazing-feature`）
 3. 変更をコミット（`git commit -m 'Add amazing feature'`）
-4. ブランチにプッシュ（`git push origin feature/amazing-feature`）
-5. Pull Request は原則 `dev` ブランチ宛てで作成（外部コントリビューター向け統合ブランチ）
-6. `main` はメンテナー承認済みの緊急ホットフィックス時のみ使用し、その後 `main -> dev` をバックマージ
+4. PR 前にローカル検証を実行:
+   - `pnpm run format:check`
+   - `pnpm run lint`
+   - `pnpm run build`
+   - `pnpm run test:ci`
+5. ブランチにプッシュ（`git push origin feature/amazing-feature`）
+6. Pull Request は原則 `dev` ブランチ宛てで作成（外部コントリビューター向け統合ブランチ）
+7. `main` はメンテナー承認済みの緊急ホットフィックス時のみ使用し、その後 `main -> dev` をバックマージ
 
 詳細ポリシー: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 

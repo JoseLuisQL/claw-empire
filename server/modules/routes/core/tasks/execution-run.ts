@@ -313,7 +313,10 @@ Whenever you complete a subtask, report it in this format:
 
     const prompt = buildTaskExecutionPrompt(
       [
-        (buildAvailableSkillsPromptBlock || ((providerName: string) => `[Available Skills][provider=${providerName || "unknown"}][unavailable]`))(provider),
+        (
+          buildAvailableSkillsPromptBlock ||
+          ((providerName: string) => `[Available Skills][provider=${providerName || "unknown"}][unavailable]`)
+        )(provider),
         `[Task Session] id=${executionSession.sessionId} owner=${executionSession.agentId} provider=${executionSession.provider}`,
         pickL(
           l(

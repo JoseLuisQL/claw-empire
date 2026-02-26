@@ -10,7 +10,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0-blue" alt="Releases" />
+  <img src="https://img.shields.io/badge/version-1.2.1-blue" alt="Releases" />
+  <a href="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml"><img src="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +21,7 @@
 <p align="center">
   <a href="#빠른-시작">빠른 시작</a> &middot;
   <a href="#ai-installation-guide">AI 설치 가이드</a> &middot;
-  <a href="docs/releases/v1.2.0.md">릴리즈 노트</a> &middot;
+  <a href="docs/releases/v1.2.1.md">릴리즈 노트</a> &middot;
   <a href="#openclaw-integration">OpenClaw 연동</a> &middot;
   <a href="#dollar-command-logic">$ 명령 로직</a> &middot;
   <a href="#주요-기능">주요 기능</a> &middot;
@@ -66,15 +67,18 @@ Claw-Empire는 **CLI**, **OAuth**, **직접 API 키** 방식으로 연결된 AI 
 
 ---
 
-## 최신 릴리즈 (v1.2.0)
+## 최신 릴리즈 (v1.2.1)
 
-- **기능 업데이트** — 직원/부서 CRUD, 프로젝트 수동 배정, 위임 안전장치, 커스텀 스킬 업로드를 포함한 주요 운영 기능을 완성했습니다.
-- **코드 모듈화** — 대형 프론트/백엔드 파일을 기능 폴더(`src/components/*`, `server/modules/routes/*`, `server/modules/workflow/*`) 중심으로 분해해 유지보수성과 리뷰 가독성을 높였습니다.
-- **타입 부채 해소** — 서버 런타임의 `@ts-nocheck`를 제거하고 공통 타입 경계를 강화해 기존 동작 보전 + 타입 안정성을 확보했습니다.
-- **포맷 표준화** — Prettier 기준(`.prettierrc.json`, `.prettierignore`)과 `format`/`format:check` 스크립트를 추가하고 CI에서 포맷 검증을 수행합니다.
-- **테스트 코드 확장 + CI 안정화** — `tests/e2e/ci-coverage-gap.spec.ts`를 추가하고, 프론트/백엔드 단위 테스트(`src/api`, `useWebSocket`, `usePolling`, `i18n`, `auth`, `hub`, `runtime`, `gateway`)를 보강했으며 Playwright CI 설정을 안정화했습니다.
+- **CI 강화** - pnpm 버전 충돌을 해소하고 타입체크/빌드 게이트(`tsc -p tsconfig.json --noEmit`, `pnpm run build`)를 명시했으며 워크플로 최소 권한을 적용했습니다.
+- **품질 가드레일** - ESLint Flat Config + CI lint를 도입했고, hidden/bidi Unicode 가드와 `lint-staged` 기반 점진 린트 강화를 추가했습니다.
+- **런타임 안정화** - 분리된 라우트 누락, 중복 타입, 인코딩 리스크를 정리하고 App 부트스트랩/라이브싱크 로직을 훅으로 분리했습니다.
+- **테스트/문서 보강** - 테스트 DB 분리 안전장치를 강화하고 Swagger/OpenAPI 경로를 공개했으며 기여/CI 문서를 최신화했습니다.
+- **회의 타임아웃 단위 명확화** - `REVIEW_MEETING_ONESHOT_TIMEOUT_MS` 기본값을 밀리초 기준 `65000`으로 명시하고, 기존 `65` 형식도 하위호환으로 유지합니다.
 
-- 상세 문서: [`docs/releases/v1.2.0.md`](docs/releases/v1.2.0.md)
+- 상세 문서: [`docs/releases/v1.2.1.md`](docs/releases/v1.2.1.md)
+- API 문서: [`docs/api.md`](docs/api.md), [`docs/openapi.json`](docs/openapi.json)
+- 보안 정책: [`SECURITY.md`](SECURITY.md)
+
 
 ## 스크린샷
 
@@ -532,6 +536,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 | `OAUTH_GOOGLE_CLIENT_ID`               | 선택                          | Google OAuth 클라이언트 ID                                                                                          |
 | `OAUTH_GOOGLE_CLIENT_SECRET`           | 선택                          | Google OAuth 클라이언트 시크릿                                                                                      |
 | `OPENAI_API_KEY`                       | 선택                          | OpenAI API 키 (Codex용)                                                                                             |
+| `REVIEW_MEETING_ONESHOT_TIMEOUT_MS`    | 선택                          | 회의 one-shot 타임아웃(밀리초). 기본값 `65000`, 하위호환으로 `600` 이하 값은 초 단위로 해석                        |
 | `UPDATE_CHECK_ENABLED`                 | 선택                          | 인앱 업데이트 확인 배너 활성화 (`1` 기본값, `0`이면 비활성화)                                                       |
 | `UPDATE_CHECK_REPO`                    | 선택                          | 업데이트 확인에 사용할 GitHub 저장소 슬러그 (기본값: `GreenSheep01201/claw-empire`)                                 |
 | `UPDATE_CHECK_TTL_MS`                  | 선택                          | 업데이트 확인 캐시 TTL(밀리초) (기본값: `1800000`)                                                                  |
@@ -567,10 +572,30 @@ pnpm dev                # 0.0.0.0에 바인딩
 
 # 프로덕션 빌드
 pnpm build              # TypeScript 검사 + Vite 빌드
-pnpm start              # 빌드된 서버 실행
+pnpm start              # API/백엔드 서버 실행 (프로덕션 모드에서는 dist 제공)
 
 # 헬스 체크
 curl -fsS http://127.0.0.1:8790/healthz
+```
+
+### CI 검증 (현재 PR 파이프라인)
+
+모든 Pull Request에서 `.github/workflows/ci.yml`은 아래 순서로 실행됩니다.
+
+1. 워크플로우 파일 숨은/양방향 유니코드 가드
+2. `pnpm install --frozen-lockfile`
+3. `pnpm run format:check`
+4. `pnpm run lint`
+5. `pnpm exec playwright install --with-deps`
+6. `pnpm run test:ci` (`test:web --coverage` + `test:api --coverage` + `test:e2e`)
+
+PR 전 로컬 권장 점검:
+
+```bash
+pnpm run format:check
+pnpm run lint
+pnpm run build
+pnpm run test:ci
 ```
 
 ### 통신 QA 점검 (v1.1.6)
@@ -670,32 +695,43 @@ CLI 모드로 사용하려면 최소 하나 이상 설치하세요:
 
 ```
 claw-empire/
+├── .github/
+│   └── workflows/
+│       └── ci.yml             # PR CI (Unicode 가드, 포맷, 린트, 테스트)
 ├── server/
-│   └── index.ts              # Express 5 + SQLite + WebSocket 백엔드
+│   ├── index.ts              # 백엔드 진입점
+│   ├── server-main.ts        # 런타임 연결/부트스트랩
+│   ├── modules/              # routes/workflow/bootstrap lifecycle
+│   ├── test/                 # 백엔드 테스트 설정/헬퍼
+│   └── vitest.config.ts      # 백엔드 단위 테스트 설정
 ├── src/
-│   ├── App.tsx                # React Router를 사용하는 메인 React 앱
-│   ├── api.ts                 # Frontend API 클라이언트
-│   ├── i18n.ts                # 다국어 지원 (en/ko/ja/zh)
-│   ├── components/
-│   │   ├── OfficeView.tsx     # PixiJS 에이전트가 구현된 픽셀 아트 오피스
-│   │   ├── Dashboard.tsx      # KPI 지표 및 차트
-│   │   ├── TaskBoard.tsx      # 칸반 스타일 태스크 관리
-│   │   ├── ChatPanel.tsx      # CEO-에이전트 커뮤니케이션
-│   │   ├── SettingsPanel.tsx  # 회사 및 프로바이더 설정
-│   │   ├── SkillsLibrary.tsx  # 에이전트 스킬 관리
-│   │   └── TerminalPanel.tsx  # 실시간 실행 출력 뷰어
-│   ├── hooks/                 # usePolling, useWebSocket
-│   └── types/                 # TypeScript 타입 정의
-├── public/sprites/            # 12종의 픽셀 아트 에이전트 스프라이트
+│   ├── app/                  # 앱 셸, 레이아웃, 상태 오케스트레이션
+│   ├── api/                  # 프론트엔드 API 모듈
+│   ├── components/           # UI (office/taskboard/chat/settings)
+│   ├── hooks/                # polling/websocket 훅
+│   ├── test/                 # 프론트엔드 테스트 설정
+│   ├── types/                # 프론트엔드 타입 정의
+│   ├── App.tsx
+│   ├── api.ts
+│   └── i18n.ts
+├── tests/
+│   └── e2e/                  # Playwright E2E 시나리오
+├── public/sprites/           # 픽셀 아트 에이전트 스프라이트
 ├── scripts/
-│   ├── openclaw-setup.sh      # 원클릭 셋업 (macOS/Linux)
-│   ├── openclaw-setup.ps1     # 원클릭 셋업 (Windows PowerShell)
-│   ├── preflight-public.sh    # 릴리즈 전 보안 검사
+│   ├── setup.mjs             # 환경/부트스트랩 셋업
+│   ├── auto-apply-v1.0.5.mjs # 시작 시 마이그레이션 보조
+│   ├── openclaw-setup.sh     # 원클릭 셋업 (macOS/Linux)
+│   ├── openclaw-setup.ps1    # 원클릭 셋업 (Windows PowerShell)
+│   ├── prepare-e2e-runtime.mjs
+│   ├── preflight-public.sh   # 릴리즈 전 보안 검사
 │   └── generate-architecture-report.mjs
-├── install.sh                 # scripts/openclaw-setup.sh 실행 래퍼
-├── install.ps1                # scripts/openclaw-setup.ps1 실행 래퍼
-├── docs/                      # 설계 및 아키텍처 문서
-├── .env.example               # 환경 변수 템플릿
+├── install.sh                # scripts/openclaw-setup.sh 실행 래퍼
+├── install.ps1               # scripts/openclaw-setup.ps1 실행 래퍼
+├── docs/                     # 설계 및 아키텍처 문서
+├── AGENTS.md                 # 로컬 에이전트/오케스트레이션 규칙
+├── CONTRIBUTING.md           # 브랜치/PR/리뷰 정책
+├── eslint.config.mjs         # Flat ESLint 설정
+├── .env.example              # 환경 변수 템플릿
 └── package.json
 ```
 
@@ -713,6 +749,11 @@ Claw-Empire는 보안을 최우선으로 설계되었습니다:
 - **프리플라이트 보안 검사** — 공개 릴리즈 전 `pnpm run preflight:public` 실행으로 작업 트리와 git 히스토리의 유출된 시크릿 스캔
 - **기본값은 localhost** — 개발 서버는 `127.0.0.1`에 바인딩되어 네트워크에 노출되지 않음
 
+## API 문서 & 보안 정책 요약
+
+- **API 문서** — 엔드포인트 개요/사용법은 [`docs/api.md`](docs/api.md), 스키마/도구 연동은 [`docs/openapi.json`](docs/openapi.json)에서 확인하세요.
+- **보안 정책** — 취약점 제보/정책은 [`SECURITY.md`](SECURITY.md)를 참고하고, 공개 릴리즈 전에는 `pnpm run preflight:public` 실행을 권장합니다.
+
 ---
 
 ## 기여하기
@@ -720,11 +761,16 @@ Claw-Empire는 보안을 최우선으로 설계되었습니다:
 기여를 환영합니다! 다음 절차를 따라주세요:
 
 1. 저장소를 포크합니다
-2. 기능 브랜치를 생성합니다 (`git checkout -b feature/amazing-feature`)
+2. `dev` 기준으로 기능 브랜치를 생성합니다 (`git checkout -b feature/amazing-feature`)
 3. 변경 사항을 커밋합니다 (`git commit -m 'Add amazing feature'`)
-4. 브랜치에 푸시합니다 (`git push origin feature/amazing-feature`)
-5. Pull Request는 기본적으로 `dev` 브랜치로 엽니다 (외부 기여 통합 브랜치)
-6. `main`은 유지보수자 승인 긴급 핫픽스에만 사용하고, 이후 `main -> dev` 역병합을 수행합니다
+4. PR 전에 로컬 검증을 수행합니다:
+   - `pnpm run format:check`
+   - `pnpm run lint`
+   - `pnpm run build`
+   - `pnpm run test:ci`
+5. 브랜치에 푸시합니다 (`git push origin feature/amazing-feature`)
+6. Pull Request는 기본적으로 `dev` 브랜치로 엽니다 (외부 기여 통합 브랜치)
+7. `main`은 유지보수자 승인 긴급 핫픽스에만 사용하고, 이후 `main -> dev` 역병합을 수행합니다
 
 상세 정책: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 

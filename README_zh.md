@@ -10,7 +10,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0-blue" alt="Releases" />
+  <img src="https://img.shields.io/badge/version-1.2.1-blue" alt="Releases" />
+  <a href="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml"><img src="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platform" />
@@ -20,7 +21,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.2.0.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.2.1.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -66,15 +67,18 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 
 ---
 
-## 最新发布 (v1.2.0)
+## 最新发布 (v1.2.1)
 
-- **功能更新** — 完成员工/部门 CRUD、项目手动分配、委派安全机制与自定义技能上传等核心能力。
-- **代码模块化** — 将大型前后端代码拆分到功能目录（`src/components/*`、`server/modules/routes/*`、`server/modules/workflow/*`），提升可维护性与评审可读性。
-- **类型债务治理** — 移除服务器运行时 `@ts-nocheck`，强化共享类型与运行时类型边界，在不改变既有行为的前提下提高类型安全。
-- **格式规范落地** — 新增 Prettier 基线（`.prettierrc.json`、`.prettierignore`）、`format`/`format:check` 脚本，并在 CI 执行格式校验。
-- **测试代码扩展 + CI 稳定化** — 新增 `tests/e2e/ci-coverage-gap.spec.ts`，补齐前后端单元测试（`src/api`、`useWebSocket`、`usePolling`、`i18n`、`auth`、`hub`、`runtime`、`gateway`），并稳定 Playwright CI 参数。
+- **CI 加固** - 解决 pnpm 版本冲突，显式加入类型检查/构建闸门（`tsc -p tsconfig.json --noEmit`, `pnpm run build`），并采用最小权限 workflow。
+- **质量护栏** - 引入 ESLint Flat Config + CI lint，新增 hidden/bidi Unicode 检查，并通过 `lint-staged` 逐步收紧 lint 规则。
+- **运行时稳定性** - 修复拆分路由遗漏、重复类型与编码风险，并将 App 初始化/实时同步逻辑拆分为 hooks。
+- **测试与文档增强** - 强化测试 DB 隔离保护，补充 Swagger/OpenAPI 入口，并更新贡献/CI 文档。
+- **会议超时单位明确化** - `REVIEW_MEETING_ONESHOT_TIMEOUT_MS` 现以毫秒默认值 `65000` 为准，同时保留旧版 `65` 写法的向后兼容。
 
-- 详细说明：[`docs/releases/v1.2.0.md`](docs/releases/v1.2.0.md)
+- 详细说明: [`docs/releases/v1.2.1.md`](docs/releases/v1.2.1.md)
+- API 文档: [`docs/api.md`](docs/api.md), [`docs/openapi.json`](docs/openapi.json)
+- 安全策略: [`SECURITY.md`](SECURITY.md)
+
 
 ## 截图
 
@@ -532,6 +536,7 @@ curl -X POST http://127.0.0.1:8790/api/inbox \
 | `OAUTH_GOOGLE_CLIENT_ID`     | 否                           | Google OAuth 客户端 ID                                                 |
 | `OAUTH_GOOGLE_CLIENT_SECRET` | 否                           | Google OAuth 客户端密钥                                                |
 | `OPENAI_API_KEY`             | 否                           | OpenAI API 密钥（用于 Codex）                                          |
+| `REVIEW_MEETING_ONESHOT_TIMEOUT_MS` | 否                    | 会议 one-shot 超时（毫秒）。默认 `65000`，向后兼容：`<= 600` 按秒解释 |
 | `UPDATE_CHECK_ENABLED`       | 否                           | 启用应用内更新检查横幅（默认 `1`，设为 `0` 可关闭）                    |
 | `UPDATE_CHECK_REPO`          | 否                           | 更新检查使用的 GitHub 仓库标识（默认：`GreenSheep01201/claw-empire`）  |
 | `UPDATE_CHECK_TTL_MS`        | 否                           | 更新检查缓存 TTL（毫秒，默认：`1800000`）                              |
@@ -554,10 +559,30 @@ pnpm dev                # 绑定到 0.0.0.0
 
 # 生产构建
 pnpm build              # TypeScript 检查 + Vite 构建
-pnpm start              # 运行构建后的服务器
+pnpm start              # 启动 API/后端服务（生产模式下会提供 dist）
 
 # 健康检查
 curl -fsS http://127.0.0.1:8790/healthz
+```
+
+### CI 校验（当前 PR 流水线）
+
+每个 Pull Request 都会执行 `.github/workflows/ci.yml`，顺序如下：
+
+1. 工作流文件隐藏/双向 Unicode 守卫
+2. `pnpm install --frozen-lockfile`
+3. `pnpm run format:check`
+4. `pnpm run lint`
+5. `pnpm exec playwright install --with-deps`
+6. `pnpm run test:ci`（`test:web --coverage` + `test:api --coverage` + `test:e2e`）
+
+PR 前本地建议校验：
+
+```bash
+pnpm run format:check
+pnpm run lint
+pnpm run build
+pnpm run test:ci
 ```
 
 ### 通信 QA 检查（v1.1.6）
@@ -635,32 +660,43 @@ Claw-Empire 支持三种提供商接入路径：
 
 ```
 claw-empire/
+├── .github/
+│   └── workflows/
+│       └── ci.yml             # PR CI（Unicode 守卫、format、lint、test）
 ├── server/
-│   └── index.ts              # Express 5 + SQLite + WebSocket 后端
+│   ├── index.ts              # 后端入口
+│   ├── server-main.ts        # 运行时装配/启动
+│   ├── modules/              # routes/workflow/bootstrap lifecycle
+│   ├── test/                 # 后端测试配置/辅助
+│   └── vitest.config.ts      # 后端单测配置
 ├── src/
-│   ├── App.tsx                # 主 React 应用及路由
-│   ├── api.ts                 # 前端 API 客户端
-│   ├── i18n.ts                # 多语言支持（en/ko/ja/zh）
-│   ├── components/
-│   │   ├── OfficeView.tsx     # 基于 PixiJS 的像素风格办公室
-│   │   ├── Dashboard.tsx      # KPI 指标和图表
-│   │   ├── TaskBoard.tsx      # 看板式任务管理
-│   │   ├── ChatPanel.tsx      # CEO 与代理通信
-│   │   ├── SettingsPanel.tsx  # 公司和提供商设置
-│   │   ├── SkillsLibrary.tsx  # 代理技能管理
-│   │   └── TerminalPanel.tsx  # 实时执行输出查看器
-│   ├── hooks/                 # usePolling, useWebSocket
-│   └── types/                 # TypeScript 类型定义
-├── public/sprites/            # 12 款像素风格代理角色
+│   ├── app/                  # 应用外壳、布局、状态编排
+│   ├── api/                  # 前端 API 模块
+│   ├── components/           # UI（office/taskboard/chat/settings）
+│   ├── hooks/                # polling/websocket hooks
+│   ├── test/                 # 前端测试配置
+│   ├── types/                # 前端类型定义
+│   ├── App.tsx
+│   ├── api.ts
+│   └── i18n.ts
+├── tests/
+│   └── e2e/                  # Playwright E2E 场景
+├── public/sprites/           # 像素风代理精灵图
 ├── scripts/
-│   ├── openclaw-setup.sh      # 一键安装（macOS/Linux）
-│   ├── openclaw-setup.ps1     # 一键安装（Windows PowerShell）
-│   ├── preflight-public.sh    # 发布前安全检查
+│   ├── setup.mjs             # 环境/启动配置
+│   ├── auto-apply-v1.0.5.mjs # 启动时迁移辅助
+│   ├── openclaw-setup.sh     # 一键安装（macOS/Linux）
+│   ├── openclaw-setup.ps1    # 一键安装（Windows PowerShell）
+│   ├── prepare-e2e-runtime.mjs
+│   ├── preflight-public.sh   # 发布前安全检查
 │   └── generate-architecture-report.mjs
-├── install.sh                 # scripts/openclaw-setup.sh 包装脚本
-├── install.ps1                # scripts/openclaw-setup.ps1 包装脚本
-├── docs/                      # 设计与架构文档
-├── .env.example               # 环境变量模板
+├── install.sh                # scripts/openclaw-setup.sh 包装脚本
+├── install.ps1               # scripts/openclaw-setup.ps1 包装脚本
+├── docs/                     # 设计与架构文档
+├── AGENTS.md                 # 本地代理/编排规则
+├── CONTRIBUTING.md           # 分支/PR/评审策略
+├── eslint.config.mjs         # Flat ESLint 配置
+├── .env.example              # 环境变量模板
 └── package.json
 ```
 
@@ -678,6 +714,11 @@ Claw-Empire 在设计上充分考虑了安全性：
 - **发布前安全检查** — 在任何公开发布前运行 `pnpm run preflight:public`，扫描工作区和 git 历史中泄露的密钥
 - **默认绑定本地** — 开发服务器绑定到 `127.0.0.1`，不对外网暴露
 
+## API 文档与安全策略速览
+
+- **API 文档** — 接口概览/使用说明见 [`docs/api.md`](docs/api.md)，Schema 与工具集成见 [`docs/openapi.json`](docs/openapi.json)。
+- **安全策略** — 漏洞提交流程与安全策略见 [`SECURITY.md`](SECURITY.md)，公开发布前建议执行 `pnpm run preflight:public`。
+
 ---
 
 ## 参与贡献
@@ -685,11 +726,16 @@ Claw-Empire 在设计上充分考虑了安全性：
 欢迎贡献！请遵循以下步骤：
 
 1. Fork 本仓库
-2. 创建功能分支（`git checkout -b feature/amazing-feature`）
+2. 基于 `dev` 创建功能分支（`git checkout -b feature/amazing-feature`）
 3. 提交您的更改（`git commit -m 'Add amazing feature'`）
-4. 推送到分支（`git push origin feature/amazing-feature`）
-5. Pull Request 默认请提交到 `dev` 分支（外部贡献集成分支）
-6. `main` 仅用于维护者批准的紧急 hotfix，随后必须执行 `main -> dev` 回合并
+4. PR 前请先完成本地校验：
+   - `pnpm run format:check`
+   - `pnpm run lint`
+   - `pnpm run build`
+   - `pnpm run test:ci`
+5. 推送到分支（`git push origin feature/amazing-feature`）
+6. Pull Request 默认请提交到 `dev` 分支（外部贡献集成分支）
+7. `main` 仅用于维护者批准的紧急 hotfix，随后必须执行 `main -> dev` 回合并
 
 完整策略：[`CONTRIBUTING.md`](CONTRIBUTING.md)
 

@@ -2,6 +2,13 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -15,8 +22,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: latest
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -92,6 +97,12 @@ jobs:
 
       - name: Run lint
         run: pnpm run lint
+
+      - name: Run type check
+        run: pnpm exec tsc -p tsconfig.json --noEmit
+
+      - name: Run build
+        run: pnpm run build
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps
