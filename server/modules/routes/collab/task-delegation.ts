@@ -38,7 +38,7 @@ interface TaskDelegationDeps {
   recordTaskCreationAudit: (payload: any) => void;
   appendTaskLog: (taskId: string, source: string, message: string) => void;
   broadcast: (event: string, payload: unknown) => void;
-  l: (ko: string[], en: string[], ja?: string[], zh?: string[]) => L10n;
+  l: (ko: string[], en: string[], ja?: string[], zh?: string[], es?: string[]) => L10n;
   pickL: (pool: L10n, lang: Lang) => string;
   notifyCeo: (content: string, taskId?: string | null, messageType?: string) => void;
   isTaskWorkflowInterrupted: (taskId: string) => boolean;

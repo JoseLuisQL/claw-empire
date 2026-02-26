@@ -157,6 +157,9 @@ function startTaskExecutionForAgent(
       ],
       ["上記タスクを丁寧に完了してください。必要に応じて継続要約と会話コンテキストを参照してください。"],
       ["请完整地完成上述任务。可按需参考连续执行摘要与会话上下文。"],
+      [
+        "Completa la tarea de forma exhaustiva. Si aplica, usa el resumen de continuidad y el contexto de conversación. Responde y reporta estrictamente en español.",
+      ],
     ),
     taskLang,
   );
@@ -165,7 +168,18 @@ function startTaskExecutionForAgent(
     [
       availableSkillsPromptBlock,
       `[Task Session] id=${executionSession.sessionId} owner=${executionSession.agentId} provider=${executionSession.provider}`,
-      "This session is scoped to this task only. Keep context continuity inside this task session and do not mix with other projects.",
+      pickL(
+        l(
+          ["이 세션은 이 작업 전용입니다. 이 작업 안에서만 맥락 연속성을 유지하고 다른 프로젝트와 섞지 마세요."],
+          [
+            "This session is scoped to this task only. Keep context continuity inside this task session and do not mix with other projects.",
+          ],
+          ["このセッションは当該タスク専用です。このタスク内でのみ文脈の連続性を維持し、他プロジェクトと混在させないでください。"],
+          ["此会话仅限当前任务。仅在该任务会话内保持上下文连续性，不要与其他项目混用。"],
+          ["Esta sesión está limitada a esta tarea. Mantén continuidad solo dentro de esta sesión y no mezcles con otros proyectos."],
+        ),
+        taskLang,
+      ),
       recentChanges ? `[Recent Changes]\n${recentChanges}` : "",
       `[Task] ${taskData.title}`,
       taskData.description ? `\n${taskData.description}` : "",
@@ -177,7 +191,16 @@ function startTaskExecutionForAgent(
       deptConstraint,
       deptPromptBlock,
       worktreePath
-        ? `NOTE: You are working in an isolated Git worktree branch (climpire/${taskId.slice(0, 8)}). Commit your changes normally.`
+        ? pickL(
+            l(
+              [`참고: 격리된 Git worktree 브랜치(climpire/${taskId.slice(0, 8)})에서 작업 중입니다. 평소처럼 커밋하세요.`],
+              [`NOTE: You are working in an isolated Git worktree branch (climpire/${taskId.slice(0, 8)}). Commit your changes normally.`],
+              [`注記: 分離された Git worktree ブランチ (climpire/${taskId.slice(0, 8)}) で作業中です。通常どおりコミットしてください。`],
+              [`注意：你正在隔离的 Git worktree 分支（climpire/${taskId.slice(0, 8)}）中工作。按常规提交即可。`],
+              [`Nota: estás trabajando en una rama Git worktree aislada (climpire/${taskId.slice(0, 8)}). Haz commit de forma normal.`],
+            ),
+            taskLang,
+          )
         : "",
       continuationInstruction,
       runInstruction,
@@ -239,6 +262,7 @@ function startTaskExecutionForAgent(
           [` (isolated branch: climpire/${taskId.slice(0, 8)})`],
           [` (分離ブランチ: climpire/${taskId.slice(0, 8)})`],
           [`（隔离分支: climpire/${taskId.slice(0, 8)}）`],
+          [` (rama aislada: climpire/${taskId.slice(0, 8)})`],
         ),
         taskLang,
       )
@@ -250,6 +274,7 @@ function startTaskExecutionForAgent(
         [`${execName} started work on '${taskData.title}'.${worktreeNote}`],
         [`${execName}が '${taskData.title}' の作業を開始しました。${worktreeNote}`],
         [`${execName} 已开始处理 '${taskData.title}'。${worktreeNote}`],
+        [`${execName} comenzó a trabajar en '${taskData.title}'.${worktreeNote}`],
       ),
       taskLang,
     ),

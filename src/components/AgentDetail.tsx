@@ -208,6 +208,7 @@ export default function AgentDetail({
                             en: "Loading accounts...",
                             ja: "アカウント読み込み中...",
                             zh: "正在加载账号...",
+                            es: "Cargando cuentas...",
                           })}
                         </span>
                       ) : activeOAuthAccounts.length > 0 ? (
@@ -229,6 +230,7 @@ export default function AgentDetail({
                             en: "No active OAuth account",
                             ja: "有効な OAuth アカウントなし",
                             zh: "没有可用的 OAuth 账号",
+                            es: "No hay cuenta OAuth activa",
                           })}
                         </span>
                       ))}
@@ -239,6 +241,7 @@ export default function AgentDetail({
                           en: "⚙️ Assign models in Settings > API tab",
                           ja: "⚙️ 設定 > API タブでモデルを割り当ててください",
                           zh: "⚙️ 请在设置 > API 标签页中分配模型",
+                          es: "⚙️ Asigna modelos en Configuración > pestaña API",
                         })}
                       </span>
                     )}
@@ -249,13 +252,13 @@ export default function AgentDetail({
                       }}
                       className="text-[10px] px-1.5 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors disabled:opacity-50"
                     >
-                      {savingCli ? "..." : t({ ko: "저장", en: "Save", ja: "保存", zh: "保存" })}
+                      {savingCli ? "..." : t({ ko: "저장", en: "Save", ja: "保存", zh: "保存", es: "Guardar" })}
                     </button>
                     <button
                       onClick={handleCancelCliEdit}
                       className="text-[10px] px-1.5 py-0.5 bg-slate-600 hover:bg-slate-500 text-slate-300 rounded transition-colors"
                     >
-                      {t({ ko: "취소", en: "Cancel", ja: "キャンセル", zh: "取消" })}
+                      {t({ ko: "취소", en: "Cancel", ja: "キャンセル", zh: "取消", es: "Cancelar" })}
                     </button>
                   </>
                 ) : (
@@ -267,6 +270,7 @@ export default function AgentDetail({
                       en: "Click to change CLI",
                       ja: "クリックして CLI を変更",
                       zh: "点击更改 CLI",
+                      es: "Haz clic para cambiar CLI",
                     })}
                   >
                     🔧{" "}
@@ -294,14 +298,14 @@ export default function AgentDetail({
 
         <div className="flex border-b border-slate-700">
           {[
-            { key: "info", label: t({ ko: "정보", en: "Info", ja: "情報", zh: "信息" }) },
+            { key: "info", label: t({ ko: "정보", en: "Info", ja: "情報", zh: "信息", es: "Información" }) },
             {
               key: "tasks",
-              label: `${t({ ko: "업무", en: "Tasks", ja: "タスク", zh: "任务" })} (${agentTasks.length})`,
+              label: `${t({ ko: "업무", en: "Tasks", ja: "タスク", zh: "任务", es: "Tareas" })} (${agentTasks.length})`,
             },
             {
               key: "alba",
-              label: `${t({ ko: "알바생", en: "Sub-agents", ja: "サブエージェント", zh: "子代理" })} (${agentSubAgents.length})`,
+              label: `${t({ ko: "알바생", en: "Sub-agents", ja: "サブエージェント", zh: "子代理", es: "Subagentes" })} (${agentSubAgents.length})`,
             },
           ].map((tabItem) => (
             <button

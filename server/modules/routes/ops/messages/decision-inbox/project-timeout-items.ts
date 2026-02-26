@@ -63,7 +63,7 @@ export function createProjectAndTimeoutDecisionItems(
 
   function buildProjectReviewDecisionItems(): ProjectReviewDecisionItem[] {
     const lang = getPreferredLanguage();
-    const t = (ko: string, en: string, ja: string, zh: string) => pickL(l([ko], [en], [ja], [zh]), lang);
+    const t = (ko: string, en: string, ja: string, zh: string, es?: string) => pickL(l([ko], [en], [ja], [zh], [es ?? en]), lang);
 
     const rows = db
       .prepare(
@@ -156,12 +156,14 @@ export function createProjectAndTimeoutDecisionItems(
         `Selection progress: ${selectedCount}/${reviewTaskChoices.length}`,
         `選択進捗: ${selectedCount}/${reviewTaskChoices.length}`,
         `选择进度: ${selectedCount}/${reviewTaskChoices.length}`,
+        `Progreso de selección: ${selectedCount}/${reviewTaskChoices.length}`,
       );
       const continueExistingLabel = t(
         "기존 작업 이어서 진행",
         "Continue Existing Work",
         "既存作業を継続",
         "继续现有工作",
+        "Continuar trabajo existente",
       );
       const pendingList =
         pendingChoices.length > 0
@@ -176,6 +178,7 @@ export function createProjectAndTimeoutDecisionItems(
               "All active items are selected.",
               "すべてのアクティブ項目の選択が完了しました。",
               "所有活跃项已完成选择。",
+              "Se completó la selección de todos los elementos activos.",
             );
       const summary =
         pendingChoices.length > 0
@@ -184,6 +187,7 @@ export function createProjectAndTimeoutDecisionItems(
               `Project '${projectName}' has all ${activeTotal} active items in Review.\nSelect the ${decisionTargetTotal} target item(s) first.\n${taskProgressLine}\n${pendingList}`,
               `プロジェクト'${projectName}'のアクティブ項目${activeTotal}件はすべてReview状態です。\n代表者の選択対象${decisionTargetTotal}件を先に選択してください。\n${taskProgressLine}\n${pendingList}`,
               `项目'${projectName}'的 ${activeTotal} 个活跃项已全部进入 Review。\n请先选择代表决策目标 ${decisionTargetTotal} 项。\n${taskProgressLine}\n${pendingList}`,
+              `El proyecto '${projectName}' tiene sus ${activeTotal} elementos activos en estado Review.\nPrimero selecciona los ${decisionTargetTotal} elemento(s) objetivo de decisión.\n${taskProgressLine}\n${pendingList}`,
             )
           : requiresRepresentativeSelection
             ? t(
@@ -191,12 +195,14 @@ export function createProjectAndTimeoutDecisionItems(
                 `Project '${projectName}' has all ${activeTotal} active items in Review.\nSelection for ${decisionTargetTotal} target item(s) is complete.\nChoose the next step from the options below.`,
                 `プロジェクト'${projectName}'のアクティブ項目${activeTotal}件はすべてReview状態です。\n代表者の選択対象${decisionTargetTotal}件の選択が完了しました。\n以下の選択肢から次のステップを選んでください。`,
                 `项目'${projectName}'的 ${activeTotal} 个活跃项已全部进入 Review。\n代表决策目标 ${decisionTargetTotal} 项已选择完成。\n请从下方选项中选择下一步。`,
+                `El proyecto '${projectName}' tiene sus ${activeTotal} elementos activos en estado Review.\nLa selección de los ${decisionTargetTotal} elemento(s) objetivo ya está completa.\nElige el siguiente paso en las opciones de abajo.`,
               )
             : t(
                 `프로젝트 '${projectName}'의 활성 항목 ${activeTotal}건이 모두 Review 상태입니다.\n대표 선택 단계는 필요하지 않습니다.\n아래 선택지에서 진행 방식을 선택해 주세요.`,
                 `Project '${projectName}' has all ${activeTotal} active items in Review.\nA representative pick step is not required.\nChoose how to proceed from the options below.`,
                 `プロジェクト'${projectName}'のアクティブ項目${activeTotal}件はすべてReview状態です。\n代表選択ステップは不要です。\n以下の選択肢から進行方法を選択してください。`,
                 `项目'${projectName}'的 ${activeTotal} 个活跃项已全部进入 Review。\n无需代表选择步骤。\n请从下方选项中选择推进方式。`,
+                `El proyecto '${projectName}' tiene sus ${activeTotal} elementos activos en estado Review.\nNo se requiere el paso de selección representativa.\nElige cómo continuar desde las opciones de abajo.`,
               );
       const readyOptions =
         pendingChoices.length > 0
@@ -212,24 +218,25 @@ export function createProjectAndTimeoutDecisionItems(
                         `Select Item: ${task.title}`,
                         `項目選択: ${task.title}`,
                         `选择项: ${task.title}`,
+                        `Seleccionar elemento: ${task.title}`,
                       ),
               })),
               {
                 number: pendingChoices.length + 1,
                 action: "add_followup_request",
-                label: t("추가요청 입력", "Add Follow-up Request", "追加要請を入力", "输入追加请求"),
+                label: t("추가요청 입력", "Add Follow-up Request", "追加要請を入力", "输入追加请求", "Agregar solicitud de seguimiento"),
               },
             ]
           : [
               {
                 number: 1,
                 action: "start_project_review",
-                label: t("팀장 회의 진행", "Start Team-Lead Meeting", "チームリーダー会議を進行", "启动组长评审会议"),
+                label: t("팀장 회의 진행", "Start Team-Lead Meeting", "チームリーダー会議を進行", "启动组长评审会议", "Iniciar reunión de líderes de equipo"),
               },
               {
                 number: 2,
                 action: "add_followup_request",
-                label: t("추가요청 입력", "Add Follow-up Request", "追加要請を入力", "输入追加请求"),
+                label: t("추가요청 입력", "Add Follow-up Request", "追加要請を入力", "输入追加请求", "Agregar solicitud de seguimiento"),
               },
             ];
 
@@ -254,6 +261,7 @@ export function createProjectAndTimeoutDecisionItems(
           `Project '${projectName}' has all ${activeTotal} active items in Review.\nPlanning lead is consolidating opinions...\nRepresentative options and meeting action will appear after consolidation.`,
           `プロジェクト'${projectName}'のアクティブ項目${activeTotal}件はすべてReview状態です。\n企画リードが意見を集約中...\n集約完了後に代表選択肢と会議進行選択肢が表示されます。`,
           `项目'${projectName}'的 ${activeTotal} 个活跃项已全部进入 Review。\n规划负责人正在汇总意见...\n汇总完成后将显示代表选择项与会议启动选项。`,
+          `El proyecto '${projectName}' tiene sus ${activeTotal} elementos activos en estado Review.\nEl líder de planificación está consolidando opiniones...\nCuando termine, aparecerán las opciones de selección representativa y el inicio de reunión.`,
         );
         out.push({
           id: `project-review-ready:${row.project_id}`,
@@ -279,6 +287,7 @@ export function createProjectAndTimeoutDecisionItems(
         "Planning consolidation complete",
         "企画リード意見集約完了",
         "规划负责人意见汇总完成",
+        "Consolidación de planificación completada",
       );
       const plannerSummary = formatPlannerSummaryForDisplay(String(decisionState.planner_summary ?? "").trim());
       const optionGuide =
@@ -289,6 +298,7 @@ export function createProjectAndTimeoutDecisionItems(
             `Available options now:\n${optionGuide}`,
             `現在選択可能な項目:\n${optionGuide}`,
             `当前可选项:\n${optionGuide}`,
+            `Opciones disponibles ahora:\n${optionGuide}`,
           )
         : "";
       const combinedSummaryBase = plannerSummary
@@ -319,7 +329,7 @@ export function createProjectAndTimeoutDecisionItems(
 
   function buildTimeoutResumeDecisionItems(): TimeoutResumeDecisionItem[] {
     const lang = getPreferredLanguage();
-    const t = (ko: string, en: string, ja: string, zh: string) => pickL(l([ko], [en], [ja], [zh]), lang);
+    const t = (ko: string, en: string, ja: string, zh: string, es?: string) => pickL(l([ko], [en], [ja], [zh], [es ?? en]), lang);
 
     const rows = db
       .prepare(
@@ -369,6 +379,7 @@ export function createProjectAndTimeoutDecisionItems(
         `Task '${row.task_title}' moved to Inbox after timeout. Continue from where it left off?`,
         `タスク'${row.task_title}'はタイムアウト後にInboxへ移動しました。続行しますか？`,
         `任务'${row.task_title}'超时后已移至 Inbox，是否继续执行？`,
+        `La tarea '${row.task_title}' se movió a Inbox tras un timeout. ¿Quieres continuar desde donde quedó?`,
       ),
       project_id: row.project_id,
       project_name: row.project_name,
@@ -379,12 +390,12 @@ export function createProjectAndTimeoutDecisionItems(
         {
           number: 1,
           action: "resume_timeout_task",
-          label: t("이어서 진행 (재개)", "Resume Task", "続行する（再開）", "继续执行（恢复）"),
+          label: t("이어서 진행 (재개)", "Resume Task", "続行する（再開）", "继续执行（恢复）", "Reanudar tarea"),
         },
         {
           number: 2,
           action: "keep_inbox",
-          label: t("Inbox 유지", "Keep in Inbox", "Inboxで保留", "保留在 Inbox"),
+          label: t("Inbox 유지", "Keep in Inbox", "Inboxで保留", "保留在 Inbox", "Mantener en Inbox"),
         },
       ],
     }));

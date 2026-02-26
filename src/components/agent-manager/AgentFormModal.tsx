@@ -29,7 +29,7 @@ export default function AgentFormModal({
 }: {
   isKo: boolean;
   locale: string;
-  tr: (ko: string, en: string) => string;
+  tr: (ko: string, en: string, es?: string) => string;
   form: FormData;
   setForm: (f: FormData) => void;
   departments: Department[];
@@ -84,7 +84,7 @@ export default function AgentFormModal({
         {/* Modal header */}
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-base font-bold" style={{ color: "var(--th-text-heading)" }}>
-            {isEdit ? tr("직원 정보 수정", "Edit Agent") : tr("신규 직원 채용", "Hire New Agent")}
+            {isEdit ? tr("직원 정보 수정", "Edit Agent", "Editar agente") : tr("신규 직원 채용", "Hire New Agent", "Contratar nuevo agente")}
           </h3>
           <button
             onClick={onClose}
@@ -189,7 +189,7 @@ export default function AgentFormModal({
             {locale.startsWith("ja") && (
               <div>
                 <label className="block text-xs mb-1.5 font-medium" style={{ color: "var(--th-text-secondary)" }}>
-                  {t({ ko: "일본어 이름", en: "Japanese Name", ja: "日本語名", zh: "日语名" })}
+                  {t({ ko: "일본어 이름", en: "Japanese Name", ja: "日本語名", zh: "日语名", es: "Nombre en japonés" })}
                 </label>
                 <input
                   type="text"
@@ -204,7 +204,7 @@ export default function AgentFormModal({
             {locale.startsWith("zh") && (
               <div>
                 <label className="block text-xs mb-1.5 font-medium" style={{ color: "var(--th-text-secondary)" }}>
-                  {t({ ko: "중국어 이름", en: "Chinese Name", ja: "中国語名", zh: "中文名" })}
+                  {t({ ko: "중국어 이름", en: "Chinese Name", ja: "中国語名", zh: "中文名", es: "Nombre en chino" })}
                 </label>
                 <input
                   type="text"
@@ -274,7 +274,7 @@ export default function AgentFormModal({
                         !active ? { borderColor: "var(--th-input-border)", color: "var(--th-text-muted)" } : undefined
                       }
                     >
-                      {isKo ? ROLE_LABEL[r].ko : ROLE_LABEL[r].en}
+                      {locale.startsWith("es") ? ROLE_LABEL[r].es : isKo ? ROLE_LABEL[r].ko : ROLE_LABEL[r].en}
                     </button>
                   );
                 })}
@@ -347,6 +347,7 @@ export default function AgentFormModal({
                   en: "(White background)",
                   ja: "（白背景）",
                   zh: "（白色背景）",
+                  es: "(Fondo blanco)",
                 })}
               </span>
               <input

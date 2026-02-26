@@ -11,7 +11,7 @@ import type { UiLanguage } from "../../i18n";
 import type { Agent, CliModelInfo, CliStatusMap, CompanySettings, Department } from "../../types";
 
 export type Locale = UiLanguage;
-export type TFunction = (messages: Record<Locale, string>) => string;
+export type TFunction = (messages: { ko: string; en: string; ja?: string; zh?: string; es?: string }) => string;
 
 export type LocalSettings = Omit<CompanySettings, "language"> & { language: Locale };
 export type SettingsTab = "general" | "cli" | "oauth" | "api" | "gateway";

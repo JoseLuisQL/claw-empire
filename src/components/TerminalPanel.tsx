@@ -31,7 +31,7 @@ export default function TerminalPanel({
   const containerRef = useRef<HTMLDivElement>(null);
   const { t, locale } = useI18n();
 
-  const tr = (ko: string, en: string, ja = en, zh = en) => t({ ko, en, ja, zh });
+  const tr = (ko: string, en: string, ja = en, zh = en, es = en) => t({ ko, en, ja, zh, es });
 
   const isKorean = locale.startsWith("ko");
   const agentName = agent ? (isKorean ? agent.name_ko || agent.name : agent.name || agent.name_ko) : null;
@@ -357,7 +357,7 @@ export default function TerminalPanel({
             <div className="flex h-full flex-col items-center justify-center" style={{ color: "var(--th-text-muted)" }}>
               <div className="text-3xl mb-3">📝</div>
               <div className="text-sm">
-                {tr("회의록이 아직 없습니다", "No meeting minutes yet", "会議録はまだありません", "暂无会议纪要")}
+                {tr("회의록이 아직 없습니다", "No meeting minutes yet", "会議録はまだありません", "暂无会议纪要", "Aún no hay actas de reunión")}
               </div>
             </div>
           ) : (

@@ -14,7 +14,10 @@ type CreateTaskHandler = (input: {
   assigned_agent_id?: string;
 }) => void | Promise<void>;
 
-type ResolvePathHelperErrorMessage = (error: unknown, fallback: Record<Locale, string>) => string;
+type ResolvePathHelperErrorMessage = (
+  error: unknown,
+  fallback: { ko: string; en: string; ja?: string; zh?: string; es?: string },
+) => string;
 
 type SubmitTaskOptions = {
   allowCreateMissingPath?: boolean;
@@ -125,7 +128,7 @@ export async function submitTaskWithProjectHandling(
         ko: "선택한 프로젝트를 찾을 수 없습니다. 다시 선택해주세요.",
         en: "The selected project was not found. Please select again.",
         ja: "選択したプロジェクトが見つかりません。再度選択してください。",
-        zh: "找不到所选项目，请重新选择。",
+        zh: "找不到所选项目，请重新选择。", es: "No se encontró el proyecto seleccionado. Selecciona de nuevo."
       }),
     });
     return;
@@ -138,7 +141,7 @@ export async function submitTaskWithProjectHandling(
         ko: "입력한 프로젝트를 확정할 수 없습니다. 목록에서 선택하거나 비워두고 진행해주세요.",
         en: "Could not resolve the typed project. Pick from the list or clear it to continue.",
         ja: "入力したプロジェクトを特定できません。リストから選択するか、空欄で続行してください。",
-        zh: "无法确定输入的项目。请从列表选择，或清空后继续。",
+        zh: "无法确定输入的项目。请从列表选择，或清空后继续。", es: "No se pudo resolver el proyecto escrito. Elígelo de la lista o limpia el campo para continuar."
       }),
     });
     setProjectDropdownOpen(true);
@@ -155,7 +158,7 @@ export async function submitTaskWithProjectHandling(
           ko: "신규 프로젝트명을 입력해주세요.",
           en: "Please enter a new project name.",
           ja: "新規プロジェクト名を入力してください。",
-          zh: "请输入新项目名称。",
+          zh: "请输入新项目名称。", es: "Ingresa un nombre de proyecto nuevo."
         }),
       });
       return;
@@ -167,7 +170,7 @@ export async function submitTaskWithProjectHandling(
           ko: "신규 프로젝트 경로를 입력해주세요.",
           en: "Please enter a new project path.",
           ja: "新規プロジェクトのパスを入力してください。",
-          zh: "请输入新项目路径。",
+          zh: "请输入新项目路径。", es: "Ingresa una ruta de proyecto nueva."
         }),
       });
       return;
@@ -179,7 +182,7 @@ export async function submitTaskWithProjectHandling(
           ko: "신규 프로젝트 생성 시 설명은 필수이며, 프로젝트 핵심 목표로 저장됩니다.",
           en: "Description is required for new project creation and will be saved as the project core goal.",
           ja: "新規プロジェクト作成時は説明が必須で、プロジェクトのコア目標として保存されます。",
-          zh: "创建新项目时说明为必填，并会保存为项目核心目标。",
+          zh: "创建新项目时说明为必填，并会保存为项目核心目标。", es: "La descripción es obligatoria para crear un proyecto nuevo y se guardará como objetivo principal del proyecto."
         }),
       });
       return;
@@ -205,7 +208,7 @@ export async function submitTaskWithProjectHandling(
               ko: "입력한 경로가 폴더가 아닙니다. 디렉터리 경로를 입력해주세요.",
               en: "The path is not a directory. Please enter a directory path.",
               ja: "入力したパスはフォルダではありません。ディレクトリパスを指定してください。",
-              zh: "该路径不是文件夹，请输入目录路径。",
+              zh: "该路径不是文件夹，请输入目录路径。", es: "The path is not a directory. Please enter a directory path."
             }),
           });
           return;
@@ -299,6 +302,9 @@ export async function submitTaskWithProjectHandling(
             zh: existingProjectName
               ? `该路径已被‘${existingProjectName}’使用，请选择已有项目。`
               : "该路径已被现有项目使用，请选择已有项目。",
+            es: existingProjectName
+              ? `Esta ruta ya está en uso por '${existingProjectName}'. Usa el proyecto existente.`
+              : "Esta ruta ya está en uso por otro proyecto. Usa el proyecto existente.",
           }),
         });
         return;
@@ -362,7 +368,7 @@ export async function submitTaskWithProjectHandling(
         ko: "업무 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
         en: "Failed to create task. Please try again shortly.",
         ja: "タスク作成中にエラーが発生しました。しばらくしてから再試行してください。",
-        zh: "创建任务时发生错误，请稍后重试。",
+        zh: "创建任务时发生错误，请稍后重试。", es: "No se pudo crear la tarea. Inténtalo de nuevo en breve."
       }),
     });
   } finally {

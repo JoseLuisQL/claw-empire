@@ -153,6 +153,9 @@ function finishReview(
               [
                 `[CEO OFFICE] 项目'${projectName}'的 ${gateSnapshot.activeTotal} 个活跃任务已全部进入 Review。请在 Decision Inbox 批准后启动组长评审会议。`,
               ],
+              [
+                `[CEO OFFICE] El proyecto '${projectName}' ahora tiene sus ${gateSnapshot.activeTotal} tareas activas en Review. Aprueba desde Decision Inbox para iniciar las reuniones de revisión de líderes.`,
+              ],
             ),
             lang,
           ),

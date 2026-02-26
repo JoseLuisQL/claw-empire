@@ -19,7 +19,7 @@ export default function DecisionInboxModal({
   onReplyOption,
   onOpenChat,
 }: DecisionInboxModalProps) {
-  const t = (text: { ko: string; en: string; ja?: string; zh?: string }) => pickLang(uiLanguage, text);
+  const t = (text: { ko: string; en: string; ja?: string; zh?: string; es?: string }) => pickLang(uiLanguage, text);
   const isKorean = uiLanguage.startsWith("ko");
   const spriteMap = useMemo(() => buildSpriteMap(agents), [agents]);
   const agentById = useMemo(() => {
@@ -222,7 +222,7 @@ export default function DecisionInboxModal({
           <div className="flex items-center gap-3">
             <span className="text-2xl">🧭</span>
             <h2 className="text-lg font-bold text-white">
-              {t({ ko: "미결 의사결정", en: "Pending Decisions", ja: "未決の意思決定", zh: "待处理决策" })}
+              {t({ ko: "미결 의사결정", en: "Pending Decisions", ja: "未決の意思決定", zh: "待处理决策", es: "Decisiones pendientes" })}
             </h2>
             <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-xs font-medium text-indigo-300">
               {items.length}
@@ -233,7 +233,7 @@ export default function DecisionInboxModal({
               onClick={onRefresh}
               className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800 hover:text-white"
             >
-              {t({ ko: "새로고침", en: "Refresh", ja: "更新", zh: "刷新" })}
+              {t({ ko: "새로고침", en: "Refresh", ja: "更新", zh: "刷新", es: "Actualizar" })}
             </button>
             <button
               onClick={onClose}
@@ -261,6 +261,7 @@ export default function DecisionInboxModal({
                 en: "No pending decisions right now.",
                 ja: "現在、未決の意思決定はありません。",
                 zh: "当前没有待处理决策。",
+                es: "No hay decisiones pendientes ahora mismo.",
               })}
             </div>
           ) : (
@@ -446,6 +447,7 @@ export default function DecisionInboxModal({
                 en: "Additional Follow-up Request",
                 ja: "追加要請内容の入力",
                 zh: "输入追加请求事项",
+                es: "Agregar solicitud de seguimiento",
               })}
             </p>
             <textarea
@@ -456,6 +458,7 @@ export default function DecisionInboxModal({
                 en: "Enter your request details.",
                 ja: "要請内容を入力してください。",
                 zh: "请输入请求详情。",
+                es: "Ingresa los detalles de tu solicitud.",
               })}
               rows={3}
               className="w-full resize-y rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none"
@@ -467,7 +470,7 @@ export default function DecisionInboxModal({
                 disabled={isFollowupSubmitting}
                 className="rounded-md border border-slate-600 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {t({ ko: "취소", en: "Cancel", ja: "キャンセル", zh: "取消" })}
+                {t({ ko: "취소", en: "Cancel", ja: "キャンセル", zh: "取消", es: "Cancelar" })}
               </button>
               <button
                 type="button"
@@ -476,8 +479,8 @@ export default function DecisionInboxModal({
                 className="decision-followup-submit rounded-md px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isFollowupSubmitting
-                  ? t({ ko: "전송 중...", en: "Sending...", ja: "送信中...", zh: "发送中..." })
-                  : t({ ko: "요청 등록", en: "Submit Request", ja: "要請登録", zh: "提交请求" })}
+                  ? t({ ko: "전송 중...", en: "Sending...", ja: "送信中...", zh: "发送中...", es: "Enviando..." })
+                  : t({ ko: "요청 등록", en: "Submit Request", ja: "要請登録", zh: "提交请求", es: "Enviar solicitud" })}
               </button>
             </div>
           </div>

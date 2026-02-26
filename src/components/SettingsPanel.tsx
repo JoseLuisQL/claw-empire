@@ -3,7 +3,7 @@ import type { CliModelInfo, CliStatusMap, CompanySettings } from "../types";
 import * as api from "../api";
 import type { DeviceCodeStart, OAuthConnectProvider, OAuthStatus } from "../api";
 import type { OAuthCallbackResult } from "../App";
-import { LANGUAGE_STORAGE_KEY, normalizeLanguage, useI18n } from "../i18n";
+import { LANGUAGE_STORAGE_KEY, LANGUAGE_USER_SET_STORAGE_KEY, normalizeLanguage, useI18n } from "../i18n";
 import ApiSettingsTab from "./settings/ApiSettingsTab";
 import CliSettingsTab from "./settings/CliSettingsTab";
 import GatewaySettingsTab from "./settings/GatewaySettingsTab";
@@ -172,6 +172,7 @@ export default function SettingsPanel({
   function handleSave() {
     const nextLocale = normalizeLanguage(form.language);
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLocale);
+    window.localStorage.setItem(LANGUAGE_USER_SET_STORAGE_KEY, "1");
     window.dispatchEvent(new Event("climpire-language-change"));
     persistSettings(form);
     setSaved(true);
@@ -397,7 +398,7 @@ export default function SettingsPanel({
   return (
     <div className="mx-auto max-w-2xl space-y-4 sm:space-y-6">
       <h2 className="text-xl font-bold flex items-center gap-2" style={{ color: "var(--th-text-heading)" }}>
-        ⚙️ {t({ ko: "설정", en: "Settings", ja: "設定", zh: "设置" })}
+        ⚙️ {t({ ko: "설정", en: "Settings", ja: "設定", zh: "设置", es: "Configuración" })}
       </h2>
 
       <SettingsTabNav tab={tab} setTab={setTab} t={t} />

@@ -418,7 +418,7 @@ test.describe("CI coverage gap expansion", () => {
 
     const settingsPutRes = await request.put("/api/settings", {
       data: {
-        language: "ja",
+        language: "es",
         uiDensity: "compact",
       },
     });
@@ -426,7 +426,7 @@ test.describe("CI coverage gap expansion", () => {
 
     const settingsGetRes = await request.get("/api/settings");
     const settingsGet = await expectOkJson<{ settings: Record<string, unknown> }>(settingsGetRes, "GET /api/settings");
-    expect(settingsGet.settings.language).toBe("ja");
+    expect(settingsGet.settings.language).toBe("es");
     expect(settingsGet.settings.uiDensity).toBe("compact");
 
     const settingsGetRes2 = await request.get("/api/settings");
@@ -434,7 +434,7 @@ test.describe("CI coverage gap expansion", () => {
       settingsGetRes2,
       "GET /api/settings(second-read)",
     );
-    expect(settingsGet2.settings.language).toBe("ja");
+    expect(settingsGet2.settings.language).toBe("es");
 
     const badDeptRes = await request.post("/api/departments", {
       data: {},

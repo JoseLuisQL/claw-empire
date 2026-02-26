@@ -64,6 +64,7 @@ let DEFAULT_CEO_THEME = DEFAULT_CEO_THEME_LIGHT;
 let DEFAULT_BREAK_THEME = DEFAULT_BREAK_THEME_LIGHT;
 
 type SupportedLocale = UiLanguage;
+type LocaleMap<T> = { ko: T; en: T; ja?: T; zh?: T; es?: T };
 
 const LOCALE_TEXT = {
   ceoOffice: {
@@ -71,83 +72,95 @@ const LOCALE_TEXT = {
     en: "CEO OFFICE",
     ja: "CEOオフィス",
     zh: "CEO办公室",
+    es: "OFICINA DEL CEO",
   },
   collabTable: {
     ko: "6인 협업 테이블",
     en: "6P COLLAB TABLE",
     ja: "6人コラボテーブル",
     zh: "6人协作桌",
+    es: "MESA DE COLABORACIÓN (6)",
   },
-  statsEmployees: { ko: "직원", en: "Staff", ja: "スタッフ", zh: "员工" },
-  statsWorking: { ko: "작업중", en: "Working", ja: "作業中", zh: "处理中" },
-  statsProgress: { ko: "진행", en: "In Progress", ja: "進行", zh: "进行中" },
-  statsDone: { ko: "완료", en: "Done", ja: "完了", zh: "已完成" },
+  statsEmployees: { ko: "직원", en: "Staff", ja: "スタッフ", zh: "员工", es: "Equipo" },
+  statsWorking: { ko: "작업중", en: "Working", ja: "作業中", zh: "处理中", es: "Trabajando" },
+  statsProgress: { ko: "진행", en: "In Progress", ja: "進行", zh: "进行中", es: "En progreso" },
+  statsDone: { ko: "완료", en: "Done", ja: "完了", zh: "已完成", es: "Hecho" },
   hint: {
     ko: "WASD/방향키/가상패드: CEO 이동  |  Enter: 상호작용",
     en: "WASD/Arrow/Virtual Pad: CEO Move  |  Enter: Interact",
     ja: "WASD/矢印キー/仮想パッド: CEO移動  |  Enter: 操作",
     zh: "WASD/方向键/虚拟手柄: CEO移动  |  Enter: 交互",
+    es: "WASD/Flechas/Pad virtual: mover CEO  |  Enter: interactuar",
   },
   mobileEnter: {
     ko: "Enter",
     en: "Enter",
     ja: "Enter",
     zh: "Enter",
+    es: "Enter",
   },
   noAssignedAgent: {
     ko: "배정된 직원 없음",
     en: "No assigned staff",
     ja: "担当スタッフなし",
     zh: "暂无分配员工",
+    es: "Sin personal asignado",
   },
   breakRoom: {
     ko: "☕ 휴게실",
     en: "☕ Break Room",
     ja: "☕ 休憩室",
     zh: "☕ 休息室",
+    es: "☕ Sala de descanso",
   },
   role: {
-    team_leader: { ko: "팀장", en: "Lead", ja: "リーダー", zh: "组长" },
-    senior: { ko: "시니어", en: "Senior", ja: "シニア", zh: "资深" },
-    junior: { ko: "주니어", en: "Junior", ja: "ジュニア", zh: "初级" },
-    intern: { ko: "인턴", en: "Intern", ja: "インターン", zh: "实习" },
-    part_time: { ko: "알바", en: "Part-time", ja: "アルバイト", zh: "兼职" },
+    team_leader: { ko: "팀장", en: "Lead", ja: "リーダー", zh: "组长", es: "Líder" },
+    senior: { ko: "시니어", en: "Senior", ja: "シニア", zh: "资深", es: "Senior" },
+    junior: { ko: "주니어", en: "Junior", ja: "ジュニア", zh: "初级", es: "Junior" },
+    intern: { ko: "인턴", en: "Intern", ja: "インターン", zh: "实习", es: "Practicante" },
+    part_time: { ko: "알바", en: "Part-time", ja: "アルバイト", zh: "兼职", es: "Medio tiempo" },
   },
   partTime: {
     ko: "알바",
     en: "Part-time",
     ja: "アルバイト",
     zh: "兼职",
+    es: "Medio tiempo",
   },
   collabBadge: {
     ko: "🤝 협업",
     en: "🤝 Collaboration",
     ja: "🤝 協業",
     zh: "🤝 协作",
+    es: "🤝 Colaboración",
   },
   meetingBadgeKickoff: {
     ko: "📣 회의",
     en: "📣 Meeting",
     ja: "📣 会議",
     zh: "📣 会议",
+    es: "📣 Reunión",
   },
   meetingBadgeReviewing: {
     ko: "🔎 검토중",
     en: "🔎 Reviewing",
     ja: "🔎 検討中",
     zh: "🔎 评审中",
+    es: "🔎 Revisando",
   },
   meetingBadgeApproved: {
     ko: "✅ 승인",
     en: "✅ Approval",
     ja: "✅ 承認",
     zh: "✅ 审批",
+    es: "✅ Aprobado",
   },
   meetingBadgeHold: {
     ko: "⚠ 보류",
     en: "⚠ Hold",
     ja: "⚠ 保留",
     zh: "⚠ 暂缓",
+    es: "⚠ En espera",
   },
   kickoffLines: {
     ko: ["유관부서 영향도 확인중", "리스크/의존성 공유중", "일정/우선순위 조율중", "담당 경계 정의중"],
@@ -159,6 +172,7 @@ const LOCALE_TEXT = {
     ],
     ja: ["関連部署への影響を確認中", "リスク/依存関係を共有中", "日程/優先度を調整中", "担当境界を定義中"],
     zh: ["正在确认跨团队影响", "正在共享风险/依赖关系", "正在协调排期/优先级", "正在定义职责边界"],
+    es: ["Revisando impacto entre equipos", "Compartiendo riesgos/dependencias", "Alineando calendario/prioridades", "Definiendo límites de responsabilidad"],
   },
   reviewLines: {
     ko: ["보완사항 반영 확인중", "최종안 Approved 검토중", "수정 아이디어 공유중", "결과물 교차 검토중"],
@@ -170,76 +184,88 @@ const LOCALE_TEXT = {
     ],
     ja: ["補完事項の反映を確認中", "最終承認案を確認中", "修正アイデアを共有中", "成果物を相互レビュー中"],
     zh: ["正在确认补充项是否反映", "正在审阅最终审批方案", "正在共享修改思路", "正在交叉评审交付物"],
+    es: ["Verificando actualizaciones pendientes", "Revisando borrador final de aprobación", "Compartiendo ideas de revisión", "Validando entregables de forma cruzada"],
   },
   meetingTableHint: {
     ko: "📝 회의 중: 테이블 클릭해 회의록 보기",
     en: "📝 Meeting live: click table for minutes",
     ja: "📝 会議中: テーブルをクリックして会議録を見る",
     zh: "📝 会议进行中：点击桌子查看纪要",
+    es: "📝 Reunión activa: haz clic en la mesa para ver el acta",
   },
   cliUsageTitle: {
     ko: "CLI 사용량",
     en: "CLI Usage",
     ja: "CLI使用量",
     zh: "CLI 使用量",
+    es: "Uso de CLI",
   },
   cliConnected: {
     ko: "연결됨",
     en: "connected",
     ja: "接続中",
     zh: "已连接",
+    es: "conectado",
   },
   cliRefreshTitle: {
     ko: "사용량 새로고침",
     en: "Refresh usage data",
     ja: "使用量を更新",
     zh: "刷新用量数据",
+    es: "Actualizar uso",
   },
   cliNotSignedIn: {
     ko: "로그인되지 않음",
     en: "not signed in",
     ja: "未サインイン",
     zh: "未登录",
+    es: "sin iniciar sesión",
   },
   cliNoApi: {
     ko: "사용량 API 없음",
     en: "no usage API",
     ja: "使用量APIなし",
     zh: "无用量 API",
+    es: "sin API de uso",
   },
   cliUnavailable: {
     ko: "사용 불가",
     en: "unavailable",
     ja: "利用不可",
     zh: "不可用",
+    es: "no disponible",
   },
   cliLoading: {
     ko: "불러오는 중...",
     en: "loading...",
     ja: "読み込み中...",
     zh: "加载中...",
+    es: "cargando...",
   },
   cliResets: {
     ko: "리셋까지",
     en: "resets",
     ja: "リセットまで",
     zh: "重置剩余",
+    es: "reinicia",
   },
   cliNoData: {
     ko: "데이터 없음",
     en: "no data",
     ja: "データなし",
     zh: "无数据",
+    es: "sin datos",
   },
   soon: {
     ko: "곧",
     en: "soon",
     ja: "まもなく",
     zh: "即将",
+    es: "pronto",
   },
 };
 
-const BREAK_CHAT_MESSAGES: Record<SupportedLocale, string[]> = {
+const BREAK_CHAT_MESSAGES: LocaleMap<string[]> = {
   ko: [
     "커피 한 잔 더~",
     "오늘 점심 뭐 먹지?",
@@ -275,6 +301,24 @@ const BREAK_CHAT_MESSAGES: Record<SupportedLocale, string[]> = {
     "Let's go, fighting!",
     "Recharging energy...",
     "I want to go home~",
+  ],
+  es: [
+    "Una taza más de café~",
+    "¿Qué comemos hoy al almuerzo?",
+    "Tengo mucho sueño...",
+    "¿Planes para el fin de semana?",
+    "Este proyecto está duro jaja",
+    "¡El café latte gana!",
+    "Qué buen clima hoy~",
+    "No quiero horas extra...",
+    "Tengo antojo de algo rico",
+    "Tomemos un descanso corto~",
+    "jajaja",
+    "¡Llegaron los snacks!",
+    "5 minutos más~",
+    "¡Vamos, ánimo!",
+    "Recargando energía...",
+    "Me quiero ir a casa~",
   ],
   ja: [
     "コーヒーもう一杯~",
@@ -314,8 +358,8 @@ const BREAK_CHAT_MESSAGES: Record<SupportedLocale, string[]> = {
   ],
 };
 
-function pickLocale<T>(locale: SupportedLocale, map: Record<SupportedLocale, T>): T {
-  return map[locale] ?? map.ko;
+function pickLocale<T>(locale: SupportedLocale, map: LocaleMap<T>): T {
+  return map[locale] ?? map.en ?? map.ko;
 }
 
 function inferReviewDecision(line?: string | null): MeetingReviewDecision {

@@ -4,7 +4,7 @@ import type { DecisionOption } from "../chat/decision-request";
 import AgentAvatar from "../AgentAvatar";
 import MessageContent from "../MessageContent";
 
-type Tr = (ko: string, en: string, ja?: string, zh?: string) => string;
+type Tr = (ko: string, en: string, ja?: string, zh?: string, es?: string) => string;
 
 interface StreamingMessageLike {
   message_id: string;
@@ -75,7 +75,7 @@ export default function ChatMessageList({
           <div className="text-6xl">💬</div>
           <div>
             <p className="font-medium text-gray-400">
-              {tr("대화를 시작해보세요! 👋", "Start a conversation! 👋", "会話を始めましょう! 👋", "开始对话吧! 👋")}
+              {tr("대화를 시작해보세요! 👋", "Start a conversation! 👋", "会話を始めましょう! 👋", "开始对话吧! 👋", "¡Empieza una conversación! 👋")}
             </p>
             <p className="mt-1 text-sm text-gray-600">
               {selectedAgent
@@ -84,12 +84,14 @@ export default function ChatMessageList({
                     `Send a message to ${getAgentName(selectedAgent)}`,
                     `${getAgentName(selectedAgent)}にメッセージを送ってみましょう`,
                     `给 ${getAgentName(selectedAgent)} 发送一条消息吧`,
+                    `Envía un mensaje a ${getAgentName(selectedAgent)}`,
                   )
                 : tr(
                     "전체 에이전트에게 공지를 보내보세요",
                     "Send an announcement to all agents",
                     "すべてのエージェントに告知を送ってみましょう",
                     "给所有代理发送一条公告吧",
+                    "Envía un anuncio a todos los agentes",
                   )}
             </p>
           </div>
@@ -105,8 +107,8 @@ export default function ChatMessageList({
             const senderName = isCeo
               ? tr("CEO", "CEO")
               : isSystem
-                ? tr("시스템", "System", "システム", "系统")
-                : getAgentName(senderAgent) || tr("알 수 없음", "Unknown", "不明", "未知");
+                ? tr("시스템", "System", "システム", "系统", "Sistema")
+                : getAgentName(senderAgent) || tr("알 수 없음", "Unknown", "不明", "未知", "Desconocido");
             const decisionRequest = decisionRequestByMessage.get(msg.id);
 
             if (msg.sender_type === "agent" && msg.receiver_type === "all") {

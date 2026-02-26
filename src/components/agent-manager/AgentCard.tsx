@@ -65,7 +65,11 @@ export default function AgentCard({
           </div>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             <span className={`text-[10px] px-1.5 py-0.5 rounded-md border font-medium ${ROLE_BADGE[agent.role] || ""}`}>
-              {isKo ? ROLE_LABEL[agent.role]?.ko : ROLE_LABEL[agent.role]?.en}
+              {locale.startsWith("es")
+                ? ROLE_LABEL[agent.role]?.es
+                : isKo
+                  ? ROLE_LABEL[agent.role]?.ko
+                  : ROLE_LABEL[agent.role]?.en}
             </span>
             {dept && (
               <span

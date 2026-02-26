@@ -32,17 +32,17 @@ export const STATUS_COLORS: Record<string, string> = {
 };
 
 export const STATUS_LABELS: Record<string, LangText> = {
-  idle: { ko: "대기중", en: "Idle", ja: "待機中", zh: "待机中" },
-  working: { ko: "작업중", en: "Working", ja: "作業中", zh: "工作中" },
-  break: { ko: "휴식", en: "Break", ja: "休憩中", zh: "休息中" },
-  offline: { ko: "오프라인", en: "Offline", ja: "オフライン", zh: "离线" },
+  idle: { ko: "대기중", en: "Idle", ja: "待機中", zh: "待机中", es: "Inactivo" },
+  working: { ko: "작업중", en: "Working", ja: "作業中", zh: "工作中", es: "Trabajando" },
+  break: { ko: "휴식", en: "Break", ja: "休憩中", zh: "休息中", es: "Descanso" },
+  offline: { ko: "오프라인", en: "Offline", ja: "オフライン", zh: "离线", es: "Desconectado" },
 };
 
 export const ROLE_LABELS: Record<string, LangText> = {
-  team_leader: { ko: "팀장", en: "Team Leader", ja: "チームリーダー", zh: "组长" },
-  senior: { ko: "시니어", en: "Senior", ja: "シニア", zh: "高级" },
-  junior: { ko: "주니어", en: "Junior", ja: "ジュニア", zh: "初级" },
-  intern: { ko: "인턴", en: "Intern", ja: "インターン", zh: "实习生" },
+  team_leader: { ko: "팀장", en: "Team Leader", ja: "チームリーダー", zh: "组长", es: "Líder de equipo" },
+  senior: { ko: "시니어", en: "Senior", ja: "シニア", zh: "高级", es: "Senior" },
+  junior: { ko: "주니어", en: "Junior", ja: "ジュニア", zh: "初级", es: "Junior" },
+  intern: { ko: "인턴", en: "Intern", ja: "インターン", zh: "实习生", es: "Practicante" },
 };
 
 export function isPromiseLike(value: unknown): value is Promise<void> {

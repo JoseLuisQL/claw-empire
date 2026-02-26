@@ -29,7 +29,7 @@ const getAvailableLearnedSkillsMock = vi.mocked(getAvailableLearnedSkills);
 const getCustomSkillsMock = vi.mocked(getCustomSkills);
 const unlearnSkillMock = vi.mocked(unlearnSkill);
 const LANGUAGE_STORAGE_KEY = "climpire.language";
-type TestLocale = "ko" | "en" | "ja" | "zh";
+type TestLocale = "ko" | "en" | "ja" | "zh" | "es";
 
 const UI_TEXT: Record<
   TestLocale,
@@ -63,6 +63,12 @@ const UI_TEXT: Record<
     modalHeading: "技能学习小队",
     startLearning: "开始学习",
     running: "进行中",
+  },
+  es: {
+    learn: "Aprender",
+    modalHeading: "Escuadrón de aprendizaje de habilidades",
+    startLearning: "Iniciar aprendizaje",
+    running: "En ejecución",
   },
 };
 
@@ -132,7 +138,7 @@ describe("SkillsLibrary learning modal ESC close", () => {
     vi.clearAllMocks();
   });
 
-  for (const locale of ["ko", "en", "ja", "zh"] as const) {
+  for (const locale of ["ko", "en", "ja", "zh", "es"] as const) {
     it(`closes the learning modal when Escape is pressed (${locale})`, async () => {
       currentLocale = locale;
       Object.defineProperty(window, "localStorage", {
@@ -156,7 +162,7 @@ describe("SkillsLibrary learning modal ESC close", () => {
     });
   }
 
-  for (const locale of ["ko", "en", "ja", "zh"] as const) {
+  for (const locale of ["ko", "en", "ja", "zh", "es"] as const) {
     it(`keeps the learning modal open on Escape while learning is running (${locale})`, async () => {
       currentLocale = locale;
       Object.defineProperty(window, "localStorage", {

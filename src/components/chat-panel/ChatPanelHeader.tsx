@@ -1,7 +1,7 @@
 import AgentAvatar from "../AgentAvatar";
 import type { Agent } from "../../types";
 
-type Tr = (ko: string, en: string, ja?: string, zh?: string) => string;
+type Tr = (ko: string, en: string, ja?: string, zh?: string, es?: string) => string;
 
 interface ChatPanelHeaderProps {
   selectedAgent: Agent | null;
@@ -67,7 +67,7 @@ export default function ChatPanelHeader({
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold text-white">
-                {tr("전사 공지", "Company Announcement", "全体告知", "全员公告")}
+                {tr("전사 공지", "Company Announcement", "全体告知", "全员公告", "Anuncio de la compañía")}
               </div>
               <div className="mt-0.5 text-xs text-gray-400">
                 {tr(
@@ -75,6 +75,7 @@ export default function ChatPanelHeader({
                   "Sent to all agents",
                   "すべてのエージェントに送信されます",
                   "将发送给所有代理",
+                  "Enviado a todos los agentes",
                 )}
               </div>
             </div>
@@ -106,8 +107,8 @@ export default function ChatPanelHeader({
                 }
               }}
               className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-700 hover:text-red-400"
-              aria-label={tr("대화 내역 삭제", "Clear message history", "会話履歴を削除", "清除消息记录")}
-              title={tr("대화 내역 삭제", "Clear message history", "会話履歴を削除", "清除消息记录")}
+              aria-label={tr("대화 내역 삭제", "Clear message history", "会話履歴を削除", "清除消息记录", "Borrar historial de mensajes")}
+              title={tr("대화 내역 삭제", "Clear message history", "会話履歴を削除", "清除消息记录", "Borrar historial de mensajes")}
             >
               <svg
                 className="block h-4 w-4"
@@ -128,7 +129,7 @@ export default function ChatPanelHeader({
           <button
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
-            aria-label={tr("닫기", "Close", "閉じる", "关闭")}
+            aria-label={tr("닫기", "Close", "閉じる", "关闭", "Cerrar")}
           >
             ✕
           </button>
@@ -144,6 +145,7 @@ export default function ChatPanelHeader({
               "Announcement mode - sent to all agents",
               "全体告知モード - すべてのエージェントに送信",
               "全员公告模式 - 将发送给所有代理",
+              "Modo anuncio - enviado a todos los agentes",
             )}
           </span>
         </div>

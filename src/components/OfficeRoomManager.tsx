@@ -12,7 +12,7 @@ export interface OfficeRoomManagerProps {
   onThemeChange: (themes: Record<string, DeptTheme>) => void;
   onActiveDeptChange?: (deptId: string | null) => void;
   onClose: () => void;
-  language: "ko" | "en" | "ja" | "zh";
+  language: "ko" | "en" | "ja" | "zh" | "es";
 }
 
 /* ================================================================== */
@@ -33,13 +33,13 @@ const DEFAULT_THEMES: Record<string, DeptTheme> = {
 const DEFAULT_TONE = 50;
 
 const labels = {
-  title: { ko: "사무실 관리", en: "Office Manager", ja: "オフィス管理", zh: "办公室管理" },
-  accent: { ko: "메인 색상", en: "Main Color", ja: "メインカラー", zh: "主色调" },
-  tone: { ko: "톤 (밝기)", en: "Tone (Brightness)", ja: "トーン（明るさ）", zh: "色调（亮度）" },
-  reset: { ko: "초기화", en: "Reset", ja: "リセット", zh: "重置" },
-  resetAll: { ko: "전체 초기화", en: "Reset All", ja: "全てリセット", zh: "全部重置" },
-  close: { ko: "닫기", en: "Close", ja: "閉じる", zh: "关闭" },
-  presets: { ko: "프리셋", en: "Presets", ja: "プリセット", zh: "预设" },
+  title: { ko: "사무실 관리", en: "Office Manager", ja: "オフィス管理", zh: "办公室管理", es: "Gestor de oficina" },
+  accent: { ko: "메인 색상", en: "Main Color", ja: "メインカラー", zh: "主色调", es: "Color principal" },
+  tone: { ko: "톤 (밝기)", en: "Tone (Brightness)", ja: "トーン（明るさ）", zh: "色调（亮度）", es: "Tono (brillo)" },
+  reset: { ko: "초기화", en: "Reset", ja: "リセット", zh: "重置", es: "Restablecer" },
+  resetAll: { ko: "전체 초기화", en: "Reset All", ja: "全てリセット", zh: "全部重置", es: "Restablecer todo" },
+  close: { ko: "닫기", en: "Close", ja: "閉じる", zh: "关闭", es: "Cerrar" },
+  presets: { ko: "프리셋", en: "Presets", ja: "プリセット", zh: "预设", es: "Preajustes" },
 };
 
 /* ================================================================== */
@@ -121,7 +121,7 @@ interface DeptCardProps {
   deptId: string;
   deptName: string;
   state: DeptState;
-  language: "ko" | "en" | "ja" | "zh";
+  language: "ko" | "en" | "ja" | "zh" | "es";
   onActivate: () => void;
   onAccentChange: (accent: number) => void;
   onToneChange: (tone: number) => void;

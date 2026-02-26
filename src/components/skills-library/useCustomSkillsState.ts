@@ -78,7 +78,7 @@ export function useCustomSkillsState({
           ko: "스킬명은 영문, 숫자, 하이픈, 언더스코어만 사용 가능합니다 (최대 80자)",
           en: "Skill name must be alphanumeric, dash or underscore (max 80 chars)",
           ja: "スキル名は英数字、ハイフン、アンダースコアのみ使用可能です（最大80文字）",
-          zh: "技能名称仅限字母数字、短划线或下划线（最多80个字符）",
+          zh: "技能名称仅限字母数字、短划线或下划线（最多80个字符）", es: "El nombre de la habilidad debe ser alfanumérico, guion o guion bajo (máx. 80 caracteres)"
         }),
       );
       return;

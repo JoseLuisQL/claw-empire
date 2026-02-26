@@ -174,7 +174,7 @@ function queueWake(params: { key: string; text: string; debounceMs?: number }) {
   });
 }
 
-type GatewayLang = "ko" | "en" | "ja" | "zh";
+type GatewayLang = "ko" | "en" | "ja" | "zh" | "es";
 
 function detectGatewayLang(text: string): GatewayLang {
   const ko = text.match(/[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/g)?.length ?? 0;
@@ -188,7 +188,7 @@ function detectGatewayLang(text: string): GatewayLang {
 }
 
 function normalizeGatewayLang(lang: string | null | undefined, title: string): GatewayLang {
-  if (lang === "ko" || lang === "en" || lang === "ja" || lang === "zh") return lang;
+  if (lang === "ko" || lang === "en" || lang === "ja" || lang === "zh" || lang === "es") return lang;
   if (title.trim()) return detectGatewayLang(title);
   return "en";
 }
@@ -198,18 +198,21 @@ function resolveStatusLabel(status: string, lang: GatewayLang): string {
     if (lang === "en") return "Started";
     if (lang === "ja") return "開始";
     if (lang === "zh") return "开始";
+    if (lang === "es") return "Iniciado";
     return "진행 시작";
   }
   if (status === "review") {
     if (lang === "en") return "In Review";
     if (lang === "ja") return "レビュー中";
     if (lang === "zh") return "审核中";
+    if (lang === "es") return "En revisión";
     return "검토 중";
   }
   if (status === "done") {
     if (lang === "en") return "Completed";
     if (lang === "ja") return "完了";
     if (lang === "zh") return "完成";
+    if (lang === "es") return "Completado";
     return "완료";
   }
   return status;

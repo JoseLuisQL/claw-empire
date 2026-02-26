@@ -2,18 +2,18 @@ import type { OAuthAccountInfo } from "../../api";
 import type { UiLanguage } from "../../i18n";
 
 export type Locale = UiLanguage;
-export type TFunction = (messages: Record<Locale, string>) => string;
+export type TFunction = (messages: { ko: string; en: string; ja?: string; zh?: string; es?: string }) => string;
 
 export function roleLabel(role: string, t: TFunction) {
   switch (role) {
     case "team_leader":
-      return t({ ko: "팀장", en: "Team Leader", ja: "チームリーダー", zh: "组长" });
+      return t({ ko: "팀장", en: "Team Leader", ja: "チームリーダー", zh: "组长", es: "Líder de equipo" });
     case "senior":
-      return t({ ko: "시니어", en: "Senior", ja: "シニア", zh: "高级" });
+      return t({ ko: "시니어", en: "Senior", ja: "シニア", zh: "高级", es: "Senior" });
     case "junior":
-      return t({ ko: "주니어", en: "Junior", ja: "ジュニア", zh: "初级" });
+      return t({ ko: "주니어", en: "Junior", ja: "ジュニア", zh: "初级", es: "Junior" });
     case "intern":
-      return t({ ko: "인턴", en: "Intern", ja: "インターン", zh: "实习生" });
+      return t({ ko: "인턴", en: "Intern", ja: "インターン", zh: "实习生", es: "Practicante" });
     default:
       return role;
   }
@@ -66,13 +66,13 @@ export function oauthAccountLabel(account: OAuthAccountInfo): string {
 export function statusLabel(status: string, t: TFunction) {
   switch (status) {
     case "idle":
-      return t({ ko: "대기중", en: "Idle", ja: "待機中", zh: "空闲" });
+      return t({ ko: "대기중", en: "Idle", ja: "待機中", zh: "空闲", es: "Inactivo" });
     case "working":
-      return t({ ko: "근무중", en: "Working", ja: "作業中", zh: "工作中" });
+      return t({ ko: "근무중", en: "Working", ja: "作業中", zh: "工作中", es: "Trabajando" });
     case "break":
-      return t({ ko: "휴식중", en: "Break", ja: "休憩中", zh: "休息中" });
+      return t({ ko: "휴식중", en: "Break", ja: "休憩中", zh: "休息中", es: "Descanso" });
     case "offline":
-      return t({ ko: "오프라인", en: "Offline", ja: "オフライン", zh: "离线" });
+      return t({ ko: "오프라인", en: "Offline", ja: "オフライン", zh: "离线", es: "Desconectado" });
     default:
       return status;
   }
@@ -81,19 +81,19 @@ export function statusLabel(status: string, t: TFunction) {
 export function taskStatusLabel(status: string, t: TFunction) {
   switch (status) {
     case "inbox":
-      return t({ ko: "수신함", en: "Inbox", ja: "受信箱", zh: "收件箱" });
+      return t({ ko: "수신함", en: "Inbox", ja: "受信箱", zh: "收件箱", es: "Bandeja" });
     case "planned":
-      return t({ ko: "계획됨", en: "Planned", ja: "計画済み", zh: "已计划" });
+      return t({ ko: "계획됨", en: "Planned", ja: "計画済み", zh: "已计划", es: "Planificado" });
     case "in_progress":
-      return t({ ko: "진행 중", en: "In Progress", ja: "進行中", zh: "进行中" });
+      return t({ ko: "진행 중", en: "In Progress", ja: "進行中", zh: "进行中", es: "En progreso" });
     case "review":
-      return t({ ko: "검토", en: "Review", ja: "レビュー", zh: "审核" });
+      return t({ ko: "검토", en: "Review", ja: "レビュー", zh: "审核", es: "Revisión" });
     case "done":
-      return t({ ko: "완료", en: "Done", ja: "完了", zh: "完成" });
+      return t({ ko: "완료", en: "Done", ja: "完了", zh: "完成", es: "Hecho" });
     case "pending":
-      return t({ ko: "보류", en: "Pending", ja: "保留", zh: "待处理" });
+      return t({ ko: "보류", en: "Pending", ja: "保留", zh: "待处理", es: "Pendiente" });
     case "cancelled":
-      return t({ ko: "취소", en: "Cancelled", ja: "キャンセル", zh: "已取消" });
+      return t({ ko: "취소", en: "Cancelled", ja: "キャンセル", zh: "已取消", es: "Cancelado" });
     default:
       return status;
   }
@@ -102,17 +102,17 @@ export function taskStatusLabel(status: string, t: TFunction) {
 export function taskTypeLabel(type: string, t: TFunction) {
   switch (type) {
     case "general":
-      return t({ ko: "일반", en: "General", ja: "一般", zh: "通用" });
+      return t({ ko: "일반", en: "General", ja: "一般", zh: "通用", es: "General" });
     case "development":
-      return t({ ko: "개발", en: "Development", ja: "開発", zh: "开发" });
+      return t({ ko: "개발", en: "Development", ja: "開発", zh: "开发", es: "Desarrollo" });
     case "design":
-      return t({ ko: "디자인", en: "Design", ja: "デザイン", zh: "设计" });
+      return t({ ko: "디자인", en: "Design", ja: "デザイン", zh: "设计", es: "Diseño" });
     case "analysis":
-      return t({ ko: "분석", en: "Analysis", ja: "分析", zh: "分析" });
+      return t({ ko: "분석", en: "Analysis", ja: "分析", zh: "分析", es: "Análisis" });
     case "presentation":
-      return t({ ko: "발표", en: "Presentation", ja: "プレゼン", zh: "演示" });
+      return t({ ko: "발표", en: "Presentation", ja: "プレゼン", zh: "演示", es: "Presentación" });
     case "documentation":
-      return t({ ko: "문서화", en: "Documentation", ja: "ドキュメント", zh: "文档" });
+      return t({ ko: "문서화", en: "Documentation", ja: "ドキュメント", zh: "文档", es: "Documentación" });
     default:
       return type;
   }

@@ -33,6 +33,7 @@ describe("i18n helpers", () => {
     expect(normalizeLanguage("en_US")).toBe("en");
     expect(normalizeLanguage("ja-JP")).toBe("ja");
     expect(normalizeLanguage("zh-CN")).toBe("zh");
+    expect(normalizeLanguage("es-ES")).toBe("es");
     expect(normalizeLanguage("fr-FR")).toBe("en");
     expect(normalizeLanguage(undefined)).toBe("en");
   });
@@ -57,6 +58,7 @@ describe("i18n helpers", () => {
     expect(pickLang("ko", text)).toBe("안녕하세요");
     expect(pickLang("ja", text)).toBe("hello");
     expect(pickLang("zh", text)).toBe("hello");
+    expect(pickLang("es", text)).toBe("hello");
 
     expect(
       localeName("ko", {
@@ -75,6 +77,7 @@ describe("i18n helpers", () => {
     expect(localeFromLanguage("en")).toBe("en-US");
     expect(localeFromLanguage("ja")).toBe("ja-JP");
     expect(localeFromLanguage("zh")).toBe("zh-CN");
+    expect(localeFromLanguage("es")).toBe("es-ES");
   });
 
   it("useI18n은 override 언어가 있으면 Provider 언어보다 override를 우선한다", () => {

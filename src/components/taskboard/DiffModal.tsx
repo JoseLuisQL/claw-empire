@@ -20,7 +20,7 @@ function DiffModal({ taskId, onClose }: DiffModalProps) {
     getTaskDiff(taskId)
       .then((d) => {
         if (!d.ok)
-          setError(d.error || t({ ko: "알 수 없는 오류", en: "Unknown error", ja: "不明なエラー", zh: "未知错误" }));
+          setError(d.error || t({ ko: "알 수 없는 오류", en: "Unknown error", ja: "不明なエラー", zh: "未知错误", es: "Error desconocido" }));
         else setDiffData(d);
         setLoading(false);
       })
@@ -46,7 +46,7 @@ function DiffModal({ taskId, onClose }: DiffModalProps) {
           ko: "이 브랜치를 메인에 병합하시겠습니까?",
           en: "Merge this branch into main?",
           ja: "このブランチを main にマージしますか？",
-          zh: "要将此分支合并到 main 吗？",
+          zh: "要将此分支合并到 main 吗？", es: "¿Fusionar esta rama en main?"
         }),
       )
     )
@@ -56,13 +56,13 @@ function DiffModal({ taskId, onClose }: DiffModalProps) {
       const result = await mergeTask(taskId);
       setActionResult(
         result.ok
-          ? `${t({ ko: "병합 완료", en: "Merge completed", ja: "マージ完了", zh: "合并完成" })}: ${result.message}`
-          : `${t({ ko: "병합 실패", en: "Merge failed", ja: "マージ失敗", zh: "合并失败" })}: ${result.message}`,
+          ? `${t({ ko: "병합 완료", en: "Merge completed", ja: "マージ完了", zh: "合并完成", es: "Fusión completada" })}: ${result.message}`
+          : `${t({ ko: "병합 실패", en: "Merge failed", ja: "マージ失敗", zh: "合并失败", es: "La fusión falló" })}: ${result.message}`,
       );
       if (result.ok) setTimeout(onClose, 1500);
     } catch (e: unknown) {
       setActionResult(
-        `${t({ ko: "오류", en: "Error", ja: "エラー", zh: "错误" })}: ${e instanceof Error ? e.message : String(e)}`,
+        `${t({ ko: "오류", en: "Error", ja: "エラー", zh: "错误", es: "Error" })}: ${e instanceof Error ? e.message : String(e)}`,
       );
     } finally {
       setMerging(false);
@@ -76,7 +76,7 @@ function DiffModal({ taskId, onClose }: DiffModalProps) {
           ko: "이 브랜치의 변경사항을 모두 폐기하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
           en: "Discard all changes in this branch? This action cannot be undone.",
           ja: "このブランチの変更をすべて破棄しますか？この操作は元に戻せません。",
-          zh: "要丢弃此分支的所有更改吗？此操作无法撤销。",
+          zh: "要丢弃此分支的所有更改吗？此操作无法撤销。", es: "¿Descartar todos los cambios en esta rama? Esta acción no se puede deshacer."
         }),
       )
     )
@@ -90,14 +90,14 @@ function DiffModal({ taskId, onClose }: DiffModalProps) {
               ko: "브랜치가 폐기되었습니다.",
               en: "Branch was discarded.",
               ja: "ブランチを破棄しました。",
-              zh: "分支已丢弃。",
+              zh: "分支已丢弃。", es: "La rama fue descartada."
             })
-          : `${t({ ko: "폐기 실패", en: "Discard failed", ja: "破棄失敗", zh: "丢弃失败" })}: ${result.message}`,
+          : `${t({ ko: "폐기 실패", en: "Discard failed", ja: "破棄失敗", zh: "丢弃失败", es: "Falló el descarte" })}: ${result.message}`,
       );
       if (result.ok) setTimeout(onClose, 1500);
     } catch (e: unknown) {
       setActionResult(
-        `${t({ ko: "오류", en: "Error", ja: "エラー", zh: "错误" })}: ${e instanceof Error ? e.message : String(e)}`,
+        `${t({ ko: "오류", en: "Error", ja: "エラー", zh: "错误", es: "Error" })}: ${e instanceof Error ? e.message : String(e)}`,
       );
     } finally {
       setDiscarding(false);
@@ -114,7 +114,7 @@ function DiffModal({ taskId, onClose }: DiffModalProps) {
         <div className="flex items-center justify-between border-b border-slate-700 px-5 py-3">
           <div className="flex items-center gap-2">
             <span className="text-lg font-bold text-white">
-              {t({ ko: "Git 변경사항", en: "Git Diff", ja: "Git 差分", zh: "Git 差异" })}
+              {t({ ko: "Git 변경사항", en: "Git Diff", ja: "Git 差分", zh: "Git 差异", es: "Git Diff" })}
             </span>
             {diffData?.branchName && (
               <span className="rounded-full bg-purple-900 px-2.5 py-0.5 text-xs text-purple-300">
@@ -128,19 +128,19 @@ function DiffModal({ taskId, onClose }: DiffModalProps) {
               disabled={merging || discarding || !diffData?.hasWorktree}
               className="rounded-lg bg-green-700 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-green-600 disabled:opacity-40"
             >
-              {merging ? "..." : t({ ko: "병합", en: "Merge", ja: "マージ", zh: "合并" })}
+              {merging ? "..." : t({ ko: "병합", en: "Merge", ja: "マージ", zh: "合并", es: "Fusionar" })}
             </button>
             <button
               onClick={handleDiscard}
               disabled={merging || discarding || !diffData?.hasWorktree}
               className="rounded-lg bg-red-800 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-700 disabled:opacity-40"
             >
-              {discarding ? "..." : t({ ko: "폐기", en: "Discard", ja: "破棄", zh: "丢弃" })}
+              {discarding ? "..." : t({ ko: "폐기", en: "Discard", ja: "破棄", zh: "丢弃", es: "Descartar" })}
             </button>
             <button
               onClick={onClose}
               className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white"
-              title={t({ ko: "닫기", en: "Close", ja: "閉じる", zh: "关闭" })}
+              title={t({ ko: "닫기", en: "Close", ja: "閉じる", zh: "关闭", es: "Cerrar" })}
             >
               X
             </button>
@@ -160,12 +160,12 @@ function DiffModal({ taskId, onClose }: DiffModalProps) {
                 ko: "변경사항 불러오는 중...",
                 en: "Loading diff...",
                 ja: "差分を読み込み中...",
-                zh: "正在加载差异...",
+                zh: "正在加载差异...", es: "Cargando diff..."
               })}
             </div>
           ) : error ? (
             <div className="flex items-center justify-center py-12 text-red-400">
-              {t({ ko: "오류", en: "Error", ja: "エラー", zh: "错误" })}: {error}
+              {t({ ko: "오류", en: "Error", ja: "エラー", zh: "错误", es: "Error" })}: {error}
             </div>
           ) : !diffData?.hasWorktree ? (
             <div className="flex items-center justify-center py-12 text-slate-500">
@@ -173,7 +173,7 @@ function DiffModal({ taskId, onClose }: DiffModalProps) {
                 ko: "이 작업의 워크트리를 찾을 수 없습니다. (Git 프로젝트 아님 또는 이미 병합됨)",
                 en: "No worktree found for this task (non-git project or already merged)",
                 ja: "このタスクのワークツリーが見つかりません（Git プロジェクトではない、または既にマージ済み）",
-                zh: "找不到该任务的 worktree（非 Git 项目或已合并）",
+                zh: "找不到该任务的 worktree（非 Git 项目或已合并）", es: "No se encontró worktree para esta tarea (proyecto no git o ya fusionado)."
               })}
             </div>
           ) : (
@@ -182,7 +182,7 @@ function DiffModal({ taskId, onClose }: DiffModalProps) {
               {diffData.stat && (
                 <div>
                   <h3 className="mb-1 text-sm font-semibold text-slate-300">
-                    {t({ ko: "요약", en: "Summary", ja: "概要", zh: "摘要" })}
+                    {t({ ko: "요약", en: "Summary", ja: "概要", zh: "摘要", es: "Resumen" })}
                   </h3>
                   <pre className="rounded-lg bg-slate-800 p-3 text-xs text-slate-300 overflow-x-auto">
                     {diffData.stat}
@@ -193,7 +193,7 @@ function DiffModal({ taskId, onClose }: DiffModalProps) {
               {diffData.diff && (
                 <div>
                   <h3 className="mb-1 text-sm font-semibold text-slate-300">
-                    {t({ ko: "Diff", en: "Diff", ja: "差分", zh: "差异" })}
+                    {t({ ko: "Diff", en: "Diff", ja: "差分", zh: "差异", es: "Diferencias" })}
                   </h3>
                   <pre className="max-h-[50vh] overflow-auto rounded-lg bg-slate-950 p-3 text-xs leading-relaxed">
                     {diffData.diff.split("\n").map((line, i) => {
@@ -218,7 +218,7 @@ function DiffModal({ taskId, onClose }: DiffModalProps) {
                     ko: "변경사항이 없습니다",
                     en: "No changes detected",
                     ja: "変更はありません",
-                    zh: "未检测到更改",
+                    zh: "未检测到更改", es: "No se detectaron cambios"
                   })}
                 </div>
               )}

@@ -60,7 +60,7 @@ export function createReviewRoundDecisionItems(deps: ReviewRoundDecisionItemDeps
 
   function buildReviewRoundDecisionItems(): ReviewRoundDecisionItem[] {
     const lang = getPreferredLanguage();
-    const t = (ko: string, en: string, ja: string, zh: string) => pickL(l([ko], [en], [ja], [zh]), lang);
+    const t = (ko: string, en: string, ja: string, zh: string, es?: string) => pickL(l([ko], [en], [ja], [zh], [es ?? en]), lang);
     const rows = db
       .prepare(
         `
@@ -124,7 +124,7 @@ export function createReviewRoundDecisionItems(deps: ReviewRoundDecisionItemDeps
       options.push({
         number: notes.length + 1,
         action: "skip_to_next_round",
-        label: t("다음 라운드로 SKIP", "Skip to Next Round", "次ラウンドへスキップ", "跳到下一轮"),
+        label: t("다음 라운드로 SKIP", "Skip to Next Round", "次ラウンドへスキップ", "跳到下一轮", "Saltar a la siguiente ronda"),
       });
 
       const summary = t(
@@ -132,6 +132,7 @@ export function createReviewRoundDecisionItems(deps: ReviewRoundDecisionItemDeps
         `Round ${row.meeting_round} team-lead opinions are consolidated.\nTask: '${taskTitle}'\n${projectName ? `Project: '${projectName}'\n` : ""}You can cherry-pick multiple opinions and include an extra note for remediation in one batch.\nOr choose 'Skip to Next Round' to move directly to round ${nextRound}.`,
         `ラウンド${row.meeting_round}のチームリーダー意見が集約されました。\nタスク: '${taskTitle}'\n${projectName ? `プロジェクト: '${projectName}'\n` : ""}必要な意見を複数チェリーピックし、追加意見も入力して一括補完できます。\nまたは「次ラウンドへスキップ」でラウンド${nextRound}へ進めます。`,
         `第 ${row.meeting_round} 轮组长意见已汇总。\n任务：'${taskTitle}'\n${projectName ? `项目：'${projectName}'\n` : ""}可多选意见并追加输入补充意见，一次性执行整改。\n也可选择“跳到下一轮”直接进入第 ${nextRound} 轮。`,
+        `Se consolidaron las opiniones de los líderes para la ronda ${row.meeting_round}.\nTarea: '${taskTitle}'\n${projectName ? `Proyecto: '${projectName}'\n` : ""}Puedes seleccionar varias opiniones y añadir una nota extra para ejecutar la remediación en un solo lote.\nO elige 'Saltar a la siguiente ronda' para pasar directamente a la ronda ${nextRound}.`,
       );
 
       const snapshotHash = buildReviewRoundSnapshotHash(row.meeting_id, row.meeting_round, notes);
@@ -163,6 +164,7 @@ export function createReviewRoundDecisionItems(deps: ReviewRoundDecisionItemDeps
           `Round ${row.meeting_round} team-lead opinions are consolidated.\nTask: '${taskTitle}'\n${projectName ? `Project: '${projectName}'\n` : ""}Planning lead is consolidating recommendations...\nTeam summary and recommended picks will appear after consolidation.`,
           `ラウンド${row.meeting_round}のチームリーダー意見が集約されました。\nタスク: '${taskTitle}'\n${projectName ? `プロジェクト: '${projectName}'\n` : ""}企画リードが推奨案を集約中...\n集約完了後、チーム別要約と推奨選択が表示されます。`,
           `第 ${row.meeting_round} 轮组长意见已汇总。\n任务：'${taskTitle}'\n${projectName ? `项目：'${projectName}'\n` : ""}规划负责人正在汇总建议...\n完成后将显示各团队摘要与推荐选项。`,
+          `Se consolidaron las opiniones de los líderes para la ronda ${row.meeting_round}.\nTarea: '${taskTitle}'\n${projectName ? `Proyecto: '${projectName}'\n` : ""}El líder de planificación está consolidando recomendaciones...\nAl terminar, se mostrará el resumen por equipo y las opciones recomendadas.`,
         );
         out.push({
           id: `review-round-pick:${row.task_id}:${row.meeting_id}`,
@@ -190,6 +192,7 @@ export function createReviewRoundDecisionItems(deps: ReviewRoundDecisionItemDeps
         "Planning consolidation complete",
         "企画リード意見集約完了",
         "规划负责人意见汇总完成",
+        "Consolidación de planificación completada",
       );
       const plannerSummary = formatPlannerSummaryForDisplay(String(decisionState.planner_summary ?? "").trim());
       const optionGuide = options.map((option) => `${option.number}. ${option.label}`).join("\n");
@@ -199,6 +202,7 @@ export function createReviewRoundDecisionItems(deps: ReviewRoundDecisionItemDeps
             `Available options now:\n${optionGuide}`,
             `現在選択可能な項目:\n${optionGuide}`,
             `当前可选项:\n${optionGuide}`,
+            `Opciones disponibles ahora:\n${optionGuide}`,
           )
         : "";
       const combinedSummaryBase = plannerSummary

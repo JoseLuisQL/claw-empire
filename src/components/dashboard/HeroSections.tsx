@@ -56,7 +56,7 @@ export function DashboardHeroHeader({
             <h1 className="dashboard-title-gradient text-2xl font-black tracking-tight sm:text-3xl">{companyName}</h1>
             <span className="flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-              {t({ ko: "실시간", en: "LIVE", ja: "ライブ", zh: "实时" })}
+              {t({ ko: "실시간", en: "LIVE", ja: "ライブ", zh: "实时", es: "EN VIVO" })}
             </span>
           </div>
           <p className="text-xs" style={{ color: "var(--th-text-muted)" }}>
@@ -64,7 +64,7 @@ export function DashboardHeroHeader({
               ko: "에이전트들이 실시간으로 미션을 수행 중입니다",
               en: "Agents are executing missions in real time",
               ja: "エージェントがリアルタイムでミッションを実行中です",
-              zh: "代理正在实时执行任务",
+              zh: "代理正在实时执行任务", es: "Los agentes están ejecutando misiones en tiempo real"
             })}
           </p>
         </div>
@@ -84,8 +84,8 @@ export function DashboardHeroHeader({
           </div>
           {reviewQueue > 0 && (
             <span className="flex items-center gap-1.5 rounded-lg border border-orange-400/30 bg-orange-500/15 px-3 py-1.5 text-xs font-bold text-orange-300 animate-neon-pulse-orange">
-              🔔 {t({ ko: "대기", en: "Queued", ja: "待機", zh: "待处理" })} {numberFormatter.format(reviewQueue)}
-              {t({ ko: "건", en: "", ja: "件", zh: "项" })}
+              🔔 {t({ ko: "대기", en: "Queued", ja: "待機", zh: "待处理", es: "En cola" })} {numberFormatter.format(reviewQueue)}
+              {t({ ko: "건", en: "", ja: "件", zh: "项", es: "" })}
             </span>
           )}
         </div>
@@ -198,14 +198,14 @@ export function DashboardRankingBoard({
           </span>
           <div>
             <h2 className="dashboard-ranking-gradient text-lg font-black uppercase tracking-wider">
-              {t({ ko: "랭킹 보드", en: "RANKING BOARD", ja: "ランキングボード", zh: "排行榜" })}
+              {t({ ko: "랭킹 보드", en: "RANKING BOARD", ja: "ランキングボード", zh: "排行榜", es: "TABLA DE RANKING" })}
             </h2>
             <p className="text-[10px]" style={{ color: "var(--th-text-muted)" }}>
               {t({
                 ko: "XP 기준 에이전트 순위",
                 en: "Agent ranking by XP",
                 ja: "XP 基準のエージェント順位",
-                zh: "按 XP 排名",
+                zh: "按 XP 排名", es: "Ranking de agentes por XP"
               })}
             </p>
           </div>
@@ -226,7 +226,7 @@ export function DashboardRankingBoard({
               ko: "등록된 에이전트가 없습니다",
               en: "No agents registered",
               ja: "登録されたエージェントがいません",
-              zh: "暂无已注册代理",
+              zh: "暂无已注册代理", es: "No hay agentes registrados"
             })}
           </p>
           <p className="text-[10px]">
@@ -234,7 +234,7 @@ export function DashboardRankingBoard({
               ko: "에이전트를 추가하고 미션을 시작하세요",
               en: "Add agents and start missions",
               ja: "エージェントを追加してミッションを開始しましょう",
-              zh: "添加代理并开始任务",
+              zh: "添加代理并开始任务", es: "Agrega agentes y comienza misiones"
             })}
           </p>
         </div>
@@ -345,7 +345,7 @@ export function DashboardRankingBoard({
                         {agent.name}
                       </p>
                       <p className="text-[10px]" style={{ color: "var(--th-text-muted)" }}>
-                        {agent.department || t({ ko: "미지정", en: "Unassigned", ja: "未指定", zh: "未指定" })}
+                        {agent.department || t({ ko: "미지정", en: "Unassigned", ja: "未指定", zh: "未指定", es: "Sin asignar" })}
                       </p>
                     </div>
                     <div className="hidden w-28 sm:block">
@@ -390,7 +390,7 @@ export function DashboardRankingBoard({
                       {agent.name}
                     </p>
                     <p className="text-xs" style={{ color: "var(--th-text-muted)" }}>
-                      {agent.department || t({ ko: "미지정", en: "Unassigned", ja: "未指定", zh: "未指定" })}
+                      {agent.department || t({ ko: "미지정", en: "Unassigned", ja: "未指定", zh: "未指定", es: "Sin asignar" })}
                     </p>
                   </div>
                   <div className="text-right">

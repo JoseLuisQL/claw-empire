@@ -15,7 +15,72 @@ import { pickRandomSpritePair } from "./agent-manager/utils";
 export default function AgentManager({ agents, departments, onAgentsChange }: AgentManagerProps) {
   const { t, locale } = useI18n();
   const isKo = locale.startsWith("ko");
-  const tr = (ko: string, en: string) => t({ ko, en, ja: en, zh: en });
+  const esMap: Record<string, string> = {
+    "Agent Manager": "Gestor de agentes",
+    "Add Dept": "Agregar depto",
+    "Hire Agent": "Contratar agente",
+    Agents: "Agentes",
+    Departments: "Departamentos",
+    Total: "Total",
+    Working: "En trabajo",
+    All: "Todos",
+    "Double-click: edit dept": "Doble clic: editar depto",
+    Search: "Buscar",
+    "No agents found": "No se encontraron agentes",
+    "Order has been changed.": "El orden ha cambiado.",
+    "Saving...": "Guardando...",
+    "Save Order": "Guardar orden",
+    Cancel: "Cancelar",
+    agents: "agentes",
+    Edit: "Editar",
+    "No departments found.": "No se encontraron departamentos.",
+    "Department ID already exists.": "El ID del departamento ya existe.",
+    "Cannot delete: department has agents.": "No se puede eliminar: el departamento tiene agentes.",
+    "Cannot delete: department has tasks.": "No se puede eliminar: el departamento tiene tareas.",
+    "Cannot delete: protected system department.": "No se puede eliminar: departamento del sistema protegido.",
+    "Edit Department": "Editar departamento",
+    "Add Department": "Agregar departamento",
+    Icon: "Icono",
+    Name: "Nombre",
+    "Theme Color": "Color del tema",
+    "Korean Name": "Nombre coreano",
+    Description: "Descripción",
+    "Brief description of the department": "Descripción breve del departamento",
+    "Department Prompt": "Prompt del departamento",
+    "Shared system prompt for agents in this department...": "Prompt del sistema compartido para los agentes de este departamento...",
+    "Applied as shared system prompt when agents in this department execute tasks": "Se aplica como prompt del sistema compartido cuando los agentes de este departamento ejecutan tareas",
+    "Save Changes": "Guardar cambios",
+    Confirm: "Confirmar",
+    No: "No",
+    Delete: "Eliminar",
+    "Edit Agent": "Editar agente",
+    "Hire New Agent": "Contratar nuevo agente",
+    "Basic Info": "Información básica",
+    Emoji: "Emoji",
+    Department: "Departamento",
+    "— Unassigned —": "— Sin asignar —",
+    "Role Config": "Configuración de rol",
+    Role: "Rol",
+    "CLI Provider": "Proveedor CLI",
+    "Personality / Prompt": "Personalidad / Prompt",
+    "Expertise or personality...": "Especialidad o personalidad...",
+    "Character Sprite": "Sprite del personaje",
+    "Upload 4-direction sprite sheet (2x2 grid)": "Subir hoja de sprite en 4 direcciones (cuadrícula 2x2)",
+    "Front / Left / Back / Right order": "Orden Frente / Izquierda / Atrás / Derecha",
+    "Removing background & splitting...": "Quitando fondo y separando...",
+    Front: "Frente",
+    Left: "Izquierda",
+    Right: "Derecha",
+    "Sprite #": "Sprite #",
+    Registering: "Registrando",
+    "Registering...": "Registrando...",
+    "Registered!": "¡Registrado!",
+    "Register Sprite": "Registrar sprite",
+    "Re-upload": "Subir de nuevo",
+    "Confirm Hire": "Confirmar contratación",
+    Fire: "Despedir",
+  };
+  const tr = (ko: string, en: string, es?: string) => t({ ko, en, ja: en, zh: en, es: es ?? esMap[en] ?? en });
 
   const [subTab, setSubTab] = useState<"agents" | "departments">("agents");
   const [search, setSearch] = useState("");
@@ -291,7 +356,7 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
               style={{ imageRendering: "pixelated", zIndex: 1 }}
             />
           </span>
-          {tr("직원 관리", "Agent Manager")}
+          {tr("직원 관리", "Agent Manager", "Gestor de agentes")}
         </h2>
         <div className="flex items-center gap-2">
           {subTab === "agents" && (
@@ -301,13 +366,13 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
                 className="px-3 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-90 active:opacity-80 shadow-sm"
                 style={{ background: "#7c3aed", color: "#ffffff", boxShadow: "0 1px 3px rgba(124,58,237,0.3)" }}
               >
-                + {tr("부서 추가", "Add Dept")}
+                + {tr("부서 추가", "Add Dept", "Agregar depto")}
               </button>
               <button
                 onClick={openCreate}
                 className="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-sm shadow-blue-600/20"
               >
-                + {tr("신규 채용", "Hire Agent")}
+                + {tr("신규 채용", "Hire Agent", "Contratar agente")}
               </button>
             </>
           )}
@@ -317,7 +382,7 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
               className="px-3 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-90 active:opacity-80 shadow-sm"
               style={{ background: "#7c3aed", color: "#ffffff", boxShadow: "0 1px 3px rgba(124,58,237,0.3)" }}
             >
-              + {tr("부서 추가", "Add Dept")}
+              + {tr("부서 추가", "Add Dept", "Agregar depto")}
             </button>
           )}
         </div>
@@ -330,10 +395,10 @@ export default function AgentManager({ agents, departments, onAgentsChange }: Ag
         {[
           {
             key: "agents" as const,
-            label: tr("직원관리", "Agents"),
+            label: tr("직원관리", "Agents", "Agentes"),
             icon: <StackedSpriteIcon sprites={randomIconSprites.tab} />,
           },
-          { key: "departments" as const, label: tr("부서관리", "Departments"), icon: "🏢" },
+          { key: "departments" as const, label: tr("부서관리", "Departments", "Departamentos"), icon: "🏢" },
         ].map((tab) => (
           <button
             key={tab.key}

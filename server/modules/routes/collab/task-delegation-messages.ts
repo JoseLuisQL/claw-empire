@@ -2,7 +2,7 @@ import type { Lang } from "../../../types/lang.ts";
 import type { L10n } from "./language-policy.ts";
 
 interface MessageDeps {
-  l: (ko: string[], en: string[], ja?: string[], zh?: string[]) => L10n;
+  l: (ko: string[], en: string[], ja?: string[], zh?: string[], es?: string[]) => L10n;
   pickL: (pool: L10n, lang: Lang) => string;
 }
 
@@ -53,6 +53,9 @@ export function buildLeaderAckMessage(params: LeaderAckParams): string {
           `了解しました。リーダー計画会議は省略し、${crossDeptNames} と事前調整後に ${subRole} ${subName} へ即時委任します。📋`,
         ],
         [`收到。将跳过负责人规划会议，先与${crossDeptNames}快速协同后立即下达给${subRole} ${subName}。📋`],
+        [
+          `Entendido. Omitiremos la reunión de líderes, coordinaremos rápido con ${crossDeptNames} y delegaremos de inmediato a ${subRole} ${subName}. 📋`,
+        ],
       ),
       lang,
     );
@@ -71,6 +74,9 @@ export function buildLeaderAckMessage(params: LeaderAckParams): string {
           `了解しました。計画会議なしで ${subRole} ${subName} へ直ちに委任し、${crossDeptNames} との協業を並行します。📋`,
         ],
         [`收到。跳过规划会议，直接下达给${subRole} ${subName}，并并行推进${crossDeptNames}协作。📋`],
+        [
+          `Entendido. Omitiremos la reunión de planificación, delegaremos directo a ${subRole} ${subName} y coordinaremos en paralelo con ${crossDeptNames}. 📋`,
+        ],
       ),
       lang,
     );
@@ -83,6 +89,7 @@ export function buildLeaderAckMessage(params: LeaderAckParams): string {
         [`Understood. We'll skip the leaders' planning meeting and delegate immediately to ${subRole} ${subName}. 📋`],
         [`了解しました。リーダー計画会議は省略し、${subRole} ${subName} へ即時委任します。📋`],
         [`收到。将跳过负责人规划会议，立即下达给${subRole} ${subName}。📋`],
+        [`Entendido. Omitiremos la reunión de líderes y delegaremos de inmediato a ${subRole} ${subName}. 📋`],
       ),
       lang,
     );
@@ -102,6 +109,9 @@ export function buildLeaderAckMessage(params: LeaderAckParams): string {
           `了解しました。まず関連部門（${crossDeptNames}）を確定し、先行協業完了後に${subRole} ${subName}へ委任します。📋`,
         ],
         [`收到。先确认相关部门（${crossDeptNames}）并完成前置协作后，再下达给${subRole} ${subName}。📋`],
+        [
+          `Entendido. Primero confirmaré los departamentos relacionados (${crossDeptNames}), completaré la coordinación previa y luego delegaré a ${subRole} ${subName}. 📋`,
+        ],
       ),
       lang,
     );
@@ -122,6 +132,9 @@ export function buildLeaderAckMessage(params: LeaderAckParams): string {
           `了解しました。まずチームリーダー計画会議を行い、その後 ${subRole} ${subName} へ委任し、${crossDeptNames} との協業も調整します。📋`,
         ],
         [`收到。先进行团队负责人规划会议，再下达给${subRole} ${subName}，并协调${crossDeptNames}协作。📋`],
+        [
+          `Entendido. Haremos primero la reunión de planificación de líderes, luego delegaremos a ${subRole} ${subName} y coordinaremos con ${crossDeptNames}. 📋`,
+        ],
       ),
       lang,
     );
@@ -146,6 +159,10 @@ export function buildLeaderAckMessage(params: LeaderAckParams): string {
       [
         `收到。先召集团队负责人规划会议，整理结论后再分配给${subRole} ${subName}。📋`,
         `明白。${subName}最合适，会在会议结束后按顺序下达。`,
+      ],
+      [
+        `Entendido. Convocaré primero la reunión de planificación de líderes y, tras cerrar el plan, delegaré a ${subRole} ${subName}. 📋`,
+        `Perfecto. ${subName} es la mejor opción y delegaré en secuencia al terminar la reunión de líderes.`,
       ],
     ),
     lang,
@@ -174,6 +191,10 @@ export function buildDelegateMessage(params: DelegateMessageParams): string {
         `${subName}，CEO的指示："${ceoMessage}" — 请跟进处理！`,
         `${subName}！优先任务："${ceoMessage}" — 随时更新进度 👍`,
       ],
+      [
+        `${subName}, directiva del CEO: "${ceoMessage}" — por favor encárgate de esto.`,
+        `${subName}, tarea prioritaria: "${ceoMessage}" — mantenme al tanto del avance. 👍`,
+      ],
     ),
     lang,
   );
@@ -195,6 +216,10 @@ export function buildSubordinateAckMessage(params: SubordinateAckParams): string
       ],
       [`はい、${leaderName}さん！了解しました。すぐ取りかかります！💪`, `承知しました！進捗共有します 🔥`],
       [`好的，${leaderName}！收到，马上开始！💪`, `明白了！会及时汇报进度 🔥`],
+      [
+        `Sí, ${leaderName}. Confirmado, me pongo con ello ahora mismo. 💪`,
+        `Entendido. Empezamos ya y te iré compartiendo avances. 🔥`,
+      ],
     ),
     lang,
   );
@@ -211,6 +236,9 @@ export function buildSelfExecutionMessage(params: SelfMessageParams): string {
         ],
         [`了解しました。リーダー計画会議は省略し、空き要員がいないため私が即時対応します。💪`],
         [`收到。将跳过负责人规划会议，因无可用成员由我立即亲自处理。💪`],
+        [
+          `Entendido. Omitiremos la reunión de líderes y, como no hay asignados disponibles, lo ejecutaré yo de inmediato. 💪`,
+        ],
       ),
       lang,
     );
@@ -227,6 +255,9 @@ export function buildSelfExecutionMessage(params: SelfMessageParams): string {
       ],
       [`了解しました。まずチームリーダー計画会議を行い、空き要員がいないため会議整理後は私が直接対応します。💪`],
       [`收到。先进行团队负责人规划会议，因无可用成员，会议整理后由我亲自执行。💪`],
+      [
+        `Entendido. Primero haremos la reunión de planificación de líderes y, como no hay disponibles, ejecutaré yo mismo después de ordenar el plan. 💪`,
+      ],
     ),
     lang,
   );
@@ -246,6 +277,9 @@ export function buildManualFallbackNotice(params: ManualFallbackNoticeParams): s
         `[CEO OFFICE] 手動割り当ての安全装置を適用: 指定エージェントに実行可能なサブ担当がいないため、チームリーダー (${leaderName}) が直接実行します。`,
       ],
       [`[CEO OFFICE] 已应用手动分配安全机制：指定员工中无可执行的下属成员，由组长（${leaderName}）直接执行。`],
+      [
+        `[CEO OFFICE] Salvaguarda de asignación manual aplicada: no hay subordinados elegibles entre los asignados, por lo que el líder (${leaderName}) ejecutará directamente.`,
+      ],
     ),
     lang,
   );

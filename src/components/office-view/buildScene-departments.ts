@@ -306,6 +306,7 @@ function renderAgentHeader(
         en: agent.role,
         ja: agent.role,
         zh: agent.role,
+        es: agent.role,
       },
     ),
     style: new TextStyle({

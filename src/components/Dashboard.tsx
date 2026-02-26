@@ -39,13 +39,13 @@ export default function Dashboard({ stats, agents, tasks, companyName, onPrimary
   const activeRate = totalAgents > 0 ? Math.round((activeAgents / totalAgents) * 100) : 0;
   const reviewQueue = reviewTasks + pendingTasks;
 
-  const primaryCtaLabel = t({ ko: "미션 시작", en: "Start Mission", ja: "ミッション開始", zh: "开始任务" });
-  const primaryCtaEyebrow = t({ ko: "빠른 실행", en: "Quick Start", ja: "クイック開始", zh: "快速开始" });
+  const primaryCtaLabel = t({ ko: "미션 시작", en: "Start Mission", ja: "ミッション開始", zh: "开始任务", es: "Iniciar misión" });
+  const primaryCtaEyebrow = t({ ko: "빠른 실행", en: "Quick Start", ja: "クイック開始", zh: "快速开始", es: "Inicio rápido" });
   const primaryCtaDescription = t({
     ko: "핵심 업무를 바로 생성하고 실행으로 전환하세요",
     en: "Create a priority task and move execution immediately.",
     ja: "最優先タスクをすぐ作成して実行へ移行します。",
-    zh: "立即创建优先任务并进入执行。",
+    zh: "立即创建优先任务并进入执行。", es: "Crea una tarea prioritaria y pásala a ejecución de inmediato."
   });
 
   const deptData = useMemo<DepartmentPerformance[]>(() => {
@@ -132,37 +132,37 @@ export default function Dashboard({ stats, agents, tasks, companyName, onPrimary
   const hudStats: HudStat[] = [
     {
       id: "total",
-      label: t({ ko: "미션", en: "MISSIONS", ja: "ミッション", zh: "任务" }),
+      label: t({ ko: "미션", en: "MISSIONS", ja: "ミッション", zh: "任务", es: "MISIONES" }),
       value: totalTasks,
-      sub: t({ ko: "누적 태스크", en: "Total tasks", ja: "累積タスク", zh: "累计任务" }),
+      sub: t({ ko: "누적 태스크", en: "Total tasks", ja: "累積タスク", zh: "累计任务", es: "Tareas totales" }),
       color: "#3b82f6",
       icon: "📋",
     },
     {
       id: "clear",
-      label: t({ ko: "완료율", en: "CLEAR RATE", ja: "クリア率", zh: "完成率" }),
+      label: t({ ko: "완료율", en: "CLEAR RATE", ja: "クリア率", zh: "完成率", es: "TASA DE CIERRE" }),
       value: `${completionRate}%`,
-      sub: `${numberFormatter.format(completedTasks)} ${t({ ko: "클리어", en: "cleared", ja: "クリア", zh: "完成" })}`,
+      sub: `${numberFormatter.format(completedTasks)} ${t({ ko: "클리어", en: "cleared", ja: "クリア", zh: "完成", es: "completadas" })}`,
       color: "#10b981",
       icon: "✅",
     },
     {
       id: "squad",
-      label: t({ ko: "스쿼드", en: "SQUAD", ja: "スクワッド", zh: "小队" }),
+      label: t({ ko: "스쿼드", en: "SQUAD", ja: "スクワッド", zh: "小队", es: "ESCUADRÓN" }),
       value: `${activeAgents}/${totalAgents}`,
-      sub: `${t({ ko: "가동률", en: "uptime", ja: "稼働率", zh: "运行率" })} ${activeRate}%`,
+      sub: `${t({ ko: "가동률", en: "uptime", ja: "稼働率", zh: "运行率", es: "actividad" })} ${activeRate}%`,
       color: "#00f0ff",
       icon: "🤖",
     },
     {
       id: "active",
-      label: t({ ko: "진행중", en: "IN PROGRESS", ja: "進行中", zh: "进行中" }),
+      label: t({ ko: "진행중", en: "IN PROGRESS", ja: "進行中", zh: "进行中", es: "EN PROGRESO" }),
       value: inProgressTasks,
-      sub: `${t({ ko: "계획", en: "planned", ja: "計画", zh: "计划" })} ${numberFormatter.format(plannedTasks)}${t({
+      sub: `${t({ ko: "계획", en: "planned", ja: "計画", zh: "计划", es: "planificadas" })} ${numberFormatter.format(plannedTasks)}${t({
         ko: "건",
         en: "",
         ja: "件",
-        zh: "项",
+        zh: "项", es: ""
       })}`,
       color: "#f59e0b",
       icon: "⚡",

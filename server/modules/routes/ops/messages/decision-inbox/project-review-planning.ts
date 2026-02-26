@@ -126,6 +126,7 @@ export function createProjectReviewPlanningHelpers(deps: ProjectReviewPlanningDe
         ["- No review-item details available"],
         ["- レビュー項目情報なし"],
         ["- 无可用评审项信息"],
+        ["- No hay detalles de ítems de revisión disponibles"],
       ),
       lang,
     );
@@ -136,6 +137,7 @@ export function createProjectReviewPlanningHelpers(deps: ProjectReviewPlanningDe
         ["- No round-level decision history yet"],
         ["- ラウンド判断履歴なし"],
         ["- 暂无轮次决策记录"],
+        ["- Aún no hay historial de decisiones por ronda"],
       ),
       lang,
     );
@@ -154,6 +156,9 @@ export function createProjectReviewPlanningHelpers(deps: ProjectReviewPlanningDe
         ],
         [
           `项目'${projectName}'的评审项已按规划负责人标准完成汇总。\n- 请先按关键检查点选择代表项，再启动组长评审会议。\n- 如有需要，可先通过追加请求开启补充整改。\n\n评审目标:\n${taskBlock}\n\n最近评审轮次决策:\n${roundDecisionBlock}`,
+        ],
+        [
+          `Se completó la consolidación de revisión para el proyecto '${projectName}' desde el criterio del líder de planificación.\n- Primero selecciona los ítems representativos según los puntos clave y luego inicia la reunión de líderes.\n- Si hace falta, abre antes una remediación con "Agregar solicitud de seguimiento".\n\nObjetivos de revisión:\n${taskBlock}\n\nDecisiones recientes por ronda:\n${roundDecisionBlock}`,
         ],
       ),
       lang,
@@ -309,6 +314,7 @@ export function createProjectReviewPlanningHelpers(deps: ProjectReviewPlanningDe
             "- Include: representative selection guidance, meeting start condition, and follow-up request usage hint.",
             "- If round-level decisions exist, reflect them explicitly in the recommendation.",
             "- Keep it under 10 lines.",
+            "- CRITICAL: reply strictly in the requested language. If Language is 'es', respond only in Spanish.",
             "",
             "Review item sources:",
             sourceLines,

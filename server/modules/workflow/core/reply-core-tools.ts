@@ -19,6 +19,7 @@ type LocalizedLines = {
   en: string[];
   ja: string[];
   zh: string[];
+  es?: string[];
 };
 
 type CreateReplyCoreToolsDeps = {
@@ -33,6 +34,7 @@ const MEETING_BUBBLE_EMPTY: LocalizedLines = {
   en: ["Sharing thoughts shortly."],
   ja: ["ご意見を共有します。"],
   zh: ["稍后分享意见。"],
+  es: ["Comparto una síntesis enseguida."],
 };
 
 const MEETING_PROMPT_TASK_CONTEXT_MAX_CHARS = Math.max(
@@ -73,6 +75,8 @@ export function createReplyCoreTools(deps: CreateReplyCoreToolsDeps) {
         return "Respond in Japanese.";
       case "zh":
         return "Respond in Chinese.";
+      case "es":
+        return "Respond in Spanish.";
       case "en":
         return "Respond in English.";
       case "ko":
@@ -175,28 +179,33 @@ export function createReplyCoreTools(deps: CreateReplyCoreToolsDeps) {
         if (lang === "en") return `${name}: Kickoff noted. Please share concise feedback in order.`;
         if (lang === "ja") return `${name}: キックオフを開始します。順番に簡潔なフィードバックを共有してください。`;
         if (lang === "zh") return `${name}: 现在开始会议，请各位按顺序简要反馈。`;
+        if (lang === "es") return `${name}: Inicio confirmado. Compartamos comentarios breves en orden.`;
         return `${name}: 킥오프 회의를 시작합니다. 순서대로 핵심 피드백을 간단히 공유해주세요.`;
       case "feedback":
         if (lang === "en")
           return `${name}: We have identified key gaps and a top-priority validation item before execution.`;
         if (lang === "ja") return `${name}: 着手前の補完項目と最優先の検証課題を確認しました。`;
         if (lang === "zh") return `${name}: 已确认执行前的补充项与最高优先验证课题。`;
+        if (lang === "es") return `${name}: Identificamos brechas clave y la validación prioritaria antes de ejecutar.`;
         return `${name}: 착수 전 보완 항목과 최우선 검증 과제를 확인했습니다.`;
       case "summary":
         if (lang === "en") return `${name}: I will consolidate all leader feedback and proceed with the agreed next step.`;
         if (lang === "ja") return `${name}: 各チームリーダーの意見を統合し、合意した次のステップへ進めます。`;
         if (lang === "zh") return `${name}: 我将汇总各负责人意见，并按约定进入下一步。`;
+        if (lang === "es") return `${name}: Consolidaré el feedback de todos los líderes y avanzaré con el siguiente paso acordado.`;
         return `${name}: 각 팀장 의견을 취합해 합의된 다음 단계로 진행하겠습니다.`;
       case "approval":
         if (lang === "en") return `${name}: Decision noted. We will proceed according to the current meeting conclusion.`;
         if (lang === "ja") return `${name}: 本会議の結論に従って進行します。`;
         if (lang === "zh") return `${name}: 已确认决策，将按本轮会议结论执行。`;
+        if (lang === "es") return `${name}: Decisión confirmada. Avanzaremos según la conclusión de esta reunión.`;
         return `${name}: 본 회의 결론에 따라 진행하겠습니다.`;
       case "direct":
       default:
         if (lang === "en") return `${name}: Acknowledged. Proceeding with the requested direction.`;
         if (lang === "ja") return `${name}: 承知しました。ご指示の方向で進めます。`;
         if (lang === "zh") return `${name}: 收到，将按您的指示推进。`;
+        if (lang === "es") return `${name}: Entendido. Procedo en la dirección solicitada.`;
         return `${name}: 확인했습니다. 요청하신 방향으로 진행하겠습니다.`;
     }
   }
@@ -204,9 +213,18 @@ export function createReplyCoreTools(deps: CreateReplyCoreToolsDeps) {
   function buildAgentReplyText(
     lang: string,
     agent: AgentRow | undefined,
-    messages: { ko: string; en: string; ja: string; zh: string },
+    messages: { ko: string; en: string; ja: string; zh: string; es?: string },
   ): string {
-    const body = lang === "en" ? messages.en : lang === "ja" ? messages.ja : lang === "zh" ? messages.zh : messages.ko;
+    const body =
+      lang === "en"
+        ? messages.en
+        : lang === "ja"
+          ? messages.ja
+          : lang === "zh"
+            ? messages.zh
+            : lang === "es"
+              ? (messages.es ?? messages.en)
+              : messages.ko;
     const name = agent ? getAgentDisplayName(agent, lang) : "";
     return name ? `${name}: ${body}` : body;
   }
@@ -259,6 +277,7 @@ export function createReplyCoreTools(deps: CreateReplyCoreToolsDeps) {
         en: "The requested operation was blocked by a file-access permission. Please check the project directory settings.",
         ja: "ファイルアクセス権限により操作がブロックされました。プロジェクトディレクトリ設定を確認してください。",
         zh: "操作因文件访问权限被阻止，请检查项目目录设置。",
+        es: "La operación fue bloqueada por permisos de acceso a archivos. Revisa la configuración del directorio del proyecto.",
       });
     }
     if (kind === "stale_file") {
@@ -267,6 +286,7 @@ export function createReplyCoreTools(deps: CreateReplyCoreToolsDeps) {
         en: "The file changed after it was read, so the operation was stopped. Please re-read the file and retry.",
         ja: "読み取り後にファイルが変更されたため、処理が停止しました。再読込して再試行してください。",
         zh: "文件在读取后被修改，操作已中止。请重新读取该文件后再试。",
+        es: "El archivo cambió después de leerse, por eso se detuvo la operación. Vuelve a leerlo e inténtalo de nuevo.",
       });
     }
     if (kind === "tool_calls_only") {
@@ -275,6 +295,7 @@ export function createReplyCoreTools(deps: CreateReplyCoreToolsDeps) {
         en: "The run ended at tool-calls without producing a final reply. Please retry.",
         ja: "ツール呼び出し段階で終了し、最終回答が生成されませんでした。再試行してください。",
         zh: "执行在工具调用阶段结束，未生成最终回复。请重试。",
+        es: "La ejecución terminó en la etapa de llamadas a herramientas y no generó una respuesta final. Reintenta.",
       });
     }
     if (kind === "timeout") {
@@ -283,6 +304,7 @@ export function createReplyCoreTools(deps: CreateReplyCoreToolsDeps) {
         en: "Response generation timed out, so the run was stopped. Please try again shortly.",
         ja: "応答生成がタイムアウトしたため処理を停止しました。しばらくして再試行してください。",
         zh: "回复生成超时，任务已中止。请稍后重试。",
+        es: "La generación de respuesta excedió el tiempo límite y se detuvo la ejecución. Inténtalo de nuevo en breve.",
       });
     }
     const suffix = detail ? ` (${detail})` : "";
@@ -291,6 +313,7 @@ export function createReplyCoreTools(deps: CreateReplyCoreToolsDeps) {
       en: `CLI execution failed${suffix}.`,
       ja: `CLI 実行中にエラーが発生しました${suffix}。`,
       zh: `CLI 执行失败${suffix}。`,
+      es: `La ejecución de CLI falló${suffix}.`,
     });
   }
 
@@ -308,7 +331,7 @@ export function createReplyCoreTools(deps: CreateReplyCoreToolsDeps) {
       return fallbackTurnReply(kind, lang, agent);
     }
     if (isInternalWorkNarration(cleaned)) return fallbackTurnReply(kind, lang, agent);
-    if ((lang === "ko" || lang === "ja" || lang === "zh") && detectLang(cleaned) === "en" && cleaned.length > 20) {
+    if ((lang === "ko" || lang === "ja" || lang === "zh" || lang === "es") && detectLang(cleaned) === "en" && cleaned.length > 20) {
       return fallbackTurnReply(kind, lang, agent);
     }
     return cleaned;

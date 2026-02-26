@@ -75,7 +75,7 @@ export function useProjectSaveHandler({
                 ko: "해당 경로는 폴더가 아닙니다. 디렉터리 경로를 입력해주세요.",
                 en: "This path is not a directory. Please enter a directory path.",
                 ja: "このパスはフォルダではありません。ディレクトリパスを入力してください。",
-                zh: "该路径不是文件夹，请输入目录路径。",
+                zh: "该路径不是文件夹，请输入目录路径。", es: "Esta ruta no es un directorio. Ingresa una ruta de directorio."
               }),
             });
             return;

@@ -9,7 +9,7 @@ type AnnouncementReplyDeps = {
   resolveLang: (text?: string, fallback?: Lang) => Lang;
   getDeptName: (deptId: string) => string;
   getRoleLabel: (role: string, lang: Lang) => string;
-  l: (ko: string[], en: string[], ja?: string[], zh?: string[]) => L10n;
+  l: (ko: string[], en: string[], ja?: string[], zh?: string[], es?: string[]) => L10n;
   pickL: (pool: L10n, lang: Lang) => string;
   sendAgentMessage: (
     agent: AgentRow,
@@ -52,6 +52,11 @@ export function createAnnouncementReplyScheduler(deps: AnnouncementReplyDeps): {
           ],
           [`${dept}の${name}、確認しました！チームにすぐ伝達します！🚨`],
           [`${dept}${name}收到！立即传达给团队！🚨`],
+          [
+            `${name} de ${dept}: confirmado. Lo comunicaré al equipo de inmediato. 🚨`,
+            `Urgencia registrada. ${dept} actuará ahora mismo.`,
+            `${name} al habla: recibido. Lo comparto con el equipo cuanto antes.`,
+          ],
         ),
         lang,
       );
@@ -70,6 +75,11 @@ export function createAnnouncementReplyScheduler(deps: AnnouncementReplyDeps): {
           ],
           [`おめでとうございます！${dept}も喜んでいます！🎉`],
           [`恭喜！${dept}也很高兴！🎉`],
+          [
+            `¡Felicidades! ${dept} también está muy contento. 🎉`,
+            `Excelente noticia. La compartiré con el equipo. 😊`,
+            `${name} confirma: ¡es una gran noticia! 👏`,
+          ],
         ),
         lang,
       );
@@ -88,6 +98,11 @@ export function createAnnouncementReplyScheduler(deps: AnnouncementReplyDeps): {
           ],
           [`${name}確認しました！スケジュール押さえます 📅`],
           [`${name}收到！会安排时间 📅`],
+          [
+            `${name} de ${dept}: confirmado. Reservaré el horario. 📅`,
+            `Asistiré y también avisaré al equipo de ${dept}.`,
+            `${name} confirma: prepararé la reunión.`,
+          ],
         ),
         lang,
       );
@@ -104,6 +119,10 @@ export function createAnnouncementReplyScheduler(deps: AnnouncementReplyDeps): {
           ],
           [`${name}確認しました。チーム内に共有し反映します 📋`],
           [`${name}收到，会在团队内传达并落实 📋`],
+          [
+            `${name} de ${dept}: entendido. Lo compartiré con el equipo y lo aplicaremos. 📋`,
+            `Actualización de política recibida. ${dept} revisará y ajustará lo necesario.`,
+          ],
         ),
         lang,
       );
@@ -123,6 +142,12 @@ export function createAnnouncementReplyScheduler(deps: AnnouncementReplyDeps): {
         ],
         [`${dept}の${name}、確認しました！👍`, `承知しました！チームに共有します！`],
         [`${dept}${name}收到！👍`, `明白了！会传达给团队！`],
+        [
+          `${name} de ${dept}: confirmado. 👍`,
+          `Aviso recibido. ${dept} lo tendrá en cuenta.`,
+          `${name} confirma: lo compartiré con el equipo.`,
+          `Entendido. Lo incorporaremos al trabajo de ${dept}. 📝`,
+        ],
       ),
       lang,
     );

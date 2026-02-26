@@ -98,7 +98,16 @@ export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
       [
         availableSkillsPromptBlock,
         `[Task Session] id=${executionSession.sessionId} owner=${executionSession.agentId} provider=${executionSession.provider}`,
-        "This session is scoped to this task only.",
+        pickL(
+          l(
+            ["이 세션은 이 작업 전용입니다."],
+            ["This session is scoped to this task only."],
+            ["このセッションは当該タスク専用です。"],
+            ["此会话仅限当前任务。"],
+            ["Esta sesión está limitada solo a esta tarea."],
+          ),
+          taskLang,
+        ),
         `[Task] ${task.title}`,
         task.description ? `\n${task.description}` : "",
         `Agent: ${agent.name} (${roleLabel}, ${agent.department_name || "Unassigned"})`,
@@ -111,6 +120,7 @@ export function registerAgentSpawnRoute(ctx: RuntimeContext): void {
             ["Please complete the task above thoroughly."],
             ["上記タスクを丁寧に完了してください。"],
             ["请完整地完成上述任务。"],
+            ["Completa la tarea anterior de forma exhaustiva. Responde y reporta estrictamente en español."],
           ),
           taskLang,
         ),

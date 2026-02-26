@@ -20,7 +20,7 @@ export function PrioritySection({ priority, t, onPriorityChange }: PrioritySecti
   return (
     <div>
       <label className="mb-2 block text-sm font-medium text-slate-300">
-        {t({ ko: "우선순위", en: "Priority", ja: "優先度", zh: "优先级" })}: {priorityIcon(priority)}{" "}
+        {t({ ko: "우선순위", en: "Priority", ja: "優先度", zh: "优先级", es: "Prioridad" })}: {priorityIcon(priority)}{" "}
         {priorityLabel(priority, t)} ({priority}/5)
       </label>
       <div className="flex gap-2">
@@ -61,7 +61,7 @@ export function AssigneeSection({
   return (
     <div>
       <label className="mb-1 block text-sm font-medium text-slate-300">
-        {t({ ko: "담당 에이전트", en: "Assignee", ja: "担当エージェント", zh: "负责人" })}
+        {t({ ko: "담당 에이전트", en: "Assignee", ja: "担当エージェント", zh: "负责人", es: "Responsable" })}
       </label>
       <AgentSelect
         agents={agents}
@@ -72,7 +72,7 @@ export function AssigneeSection({
           ko: "-- 미배정 --",
           en: "-- Unassigned --",
           ja: "-- 未割り当て --",
-          zh: "-- 未分配 --",
+          zh: "-- 未分配 --", es: "-- Unassigned --"
         })}
         size="md"
       />
@@ -82,7 +82,7 @@ export function AssigneeSection({
             ko: "해당 부서에 에이전트가 없습니다.",
             en: "No agents are available in this department.",
             ja: "この部署にはエージェントがいません。",
-            zh: "该部门暂无可用代理。",
+            zh: "该部门暂无可用代理。", es: "No hay agentes disponibles en este departamento."
           })}
         </p>
       )}
@@ -158,7 +158,7 @@ export function ProjectSection({
   return (
     <div>
       <label className="mb-1 block text-sm font-medium text-slate-300">
-        {t({ ko: "프로젝트명", en: "Project Name", ja: "プロジェクト名", zh: "项目名" })}
+        {t({ ko: "프로젝트명", en: "Project Name", ja: "プロジェクト名", zh: "项目名", es: "Nombre del proyecto" })}
       </label>
       <div className="relative" ref={projectPickerRef}>
         <div className="flex items-center gap-2">
@@ -172,7 +172,7 @@ export function ProjectSection({
               ko: "프로젝트 이름 또는 경로 입력",
               en: "Type project name or path",
               ja: "プロジェクト名またはパスを入力",
-              zh: "输入项目名称或路径",
+              zh: "输入项目名称或路径", es: "Escribe nombre o ruta del proyecto"
             })}
             className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
           />
@@ -184,7 +184,7 @@ export function ProjectSection({
               ko: "프로젝트 목록 토글",
               en: "Toggle project list",
               ja: "プロジェクト一覧の切替",
-              zh: "切换项目列表",
+              zh: "切换项目列表", es: "Alternar lista de proyectos"
             })}
           >
             {projectDropdownOpen ? "▲" : "▼"}
@@ -205,7 +205,7 @@ export function ProjectSection({
                 ko: "-- 프로젝트 미지정 --",
                 en: "-- No project --",
                 ja: "-- プロジェクトなし --",
-                zh: "-- 无项目 --",
+                zh: "-- 无项目 --", es: "-- Sin proyecto --"
               })}
             </button>
             {projectsLoading ? (
@@ -214,7 +214,7 @@ export function ProjectSection({
                   ko: "프로젝트 불러오는 중...",
                   en: "Loading projects...",
                   ja: "プロジェクトを読み込み中...",
-                  zh: "正在加载项目...",
+                  zh: "正在加载项目...", es: "Loading projects..."
                 })}
               </div>
             ) : filteredProjects.length === 0 ? (
@@ -224,7 +224,7 @@ export function ProjectSection({
                     ko: "신규 프로젝트로 생성할까요?",
                     en: "Create as a new project?",
                     ja: "新規プロジェクトとして作成しますか？",
-                    zh: "要创建为新项目吗？",
+                    zh: "要创建为新项目吗？", es: "¿Crear como proyecto nuevo?"
                   })}
                 </p>
                 <button
@@ -235,7 +235,7 @@ export function ProjectSection({
                   }}
                   className="ml-auto shrink-0 rounded-md border border-emerald-500 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
                 >
-                  {t({ ko: "예", en: "Yes", ja: "はい", zh: "是" })}
+                  {t({ ko: "예", en: "Yes", ja: "はい", zh: "是", es: "Sí" })}
                 </button>
               </div>
             ) : (
@@ -274,7 +274,7 @@ export function ProjectSection({
               ko: "신규 프로젝트 경로",
               en: "New project path",
               ja: "新規プロジェクトパス",
-              zh: "新项目路径",
+              zh: "新项目路径", es: "Nueva ruta de proyecto"
             })}
           </label>
           <input
@@ -295,7 +295,7 @@ export function ProjectSection({
                 ko: "앱 내 폴더 탐색",
                 en: "In-App Folder Browser",
                 ja: "アプリ内フォルダ閲覧",
-                zh: "应用内文件夹浏览",
+                zh: "应用内文件夹浏览", es: "Explorador de carpetas integrado"
               })}
             </button>
             <button
@@ -309,9 +309,9 @@ export function ProjectSection({
                     ko: "자동 경로찾기 닫기",
                     en: "Close Auto Finder",
                     ja: "自動候補を閉じる",
-                    zh: "关闭自动查找",
+                    zh: "关闭自动查找", es: "Cerrar buscador automático"
                   })
-                : t({ ko: "자동 경로찾기", en: "Auto Path Finder", ja: "自動パス検索", zh: "自动路径查找" })}
+                : t({ ko: "자동 경로찾기", en: "Auto Path Finder", ja: "自動パス検索", zh: "自动路径查找", es: "Buscador automático de rutas" })}
             </button>
             <button
               type="button"
@@ -324,20 +324,20 @@ export function ProjectSection({
                     ko: "수동 경로찾기 여는 중...",
                     en: "Opening Manual Picker...",
                     ja: "手動パス選択を開いています...",
-                    zh: "正在打开手动路径选择...",
+                    zh: "正在打开手动路径选择...", es: "Abriendo selector manual..."
                   })
                 : nativePickerUnsupported
                   ? t({
                       ko: "수동 경로찾기(사용불가)",
                       en: "Manual Path Finder (Unavailable)",
                       ja: "手動パス選択（利用不可）",
-                      zh: "手动路径选择（不可用）",
+                      zh: "手动路径选择（不可用）", es: "Buscador manual de rutas (No disponible)"
                     })
                   : t({
                       ko: "수동 경로찾기",
                       en: "Manual Path Finder",
                       ja: "手動パス選択",
-                      zh: "手动路径选择",
+                      zh: "手动路径选择", es: "Buscador manual de rutas"
                     })}
             </button>
           </div>
@@ -349,7 +349,7 @@ export function ProjectSection({
                     ko: "경로 후보를 불러오는 중...",
                     en: "Loading path suggestions...",
                     ja: "パス候補を読み込み中...",
-                    zh: "正在加载路径候选...",
+                    zh: "正在加载路径候选...", es: "Cargando sugerencias de ruta..."
                   })}
                 </p>
               ) : pathSuggestions.length === 0 ? (
@@ -358,7 +358,7 @@ export function ProjectSection({
                     ko: "추천 경로가 없습니다. 직접 입력해주세요.",
                     en: "No suggested path. Enter one manually.",
                     ja: "候補パスがありません。手入力してください。",
-                    zh: "没有推荐路径，请手动输入。",
+                    zh: "没有推荐路径，请手动输入。", es: "No hay ruta sugerida. Ingresa una manualmente."
                   })}
                 </p>
               ) : (
@@ -381,7 +381,7 @@ export function ProjectSection({
                 ko: "해당 경로가 아직 존재하지 않습니다. 생성 확인 후 진행됩니다.",
                 en: "This path does not exist yet. Creation confirmation will be requested.",
                 ja: "このパスはまだ存在しません。作成確認後に続行されます。",
-                zh: "该路径当前不存在，提交时会先请求创建确认。",
+                zh: "该路径当前不存在，提交时会先请求创建确认。", es: "Esta ruta todavía no existe. Se pedirá confirmación de creación."
               })}
             </p>
           )}
@@ -390,7 +390,7 @@ export function ProjectSection({
               ko: "설명 항목 내용이 신규 프로젝트의 핵심 목표(core_goal)로 저장됩니다.",
               en: "Description will be saved as the new project core goal.",
               ja: "説明欄の内容が新規プロジェクトのコア目標として保存されます。",
-              zh: "说明内容会保存为新项目的核心目标。",
+              zh: "说明内容会保存为新项目的核心目标。", es: "La descripción se guardará como objetivo principal del nuevo proyecto."
             })}
           </p>
         </div>
@@ -402,7 +402,7 @@ export function ProjectSection({
             ko: "등록된 프로젝트가 없습니다. 프로젝트 관리에서 먼저 생성해주세요.",
             en: "No registered project. Create one first in Project Manager.",
             ja: "登録済みプロジェクトがありません。先にプロジェクト管理で作成してください。",
-            zh: "暂无已注册项目。请先在项目管理中创建。",
+            zh: "暂无已注册项目。请先在项目管理中创建。", es: "No hay proyecto registrado. Crea uno primero en Gestor de proyectos."
           })}
         </p>
       )}

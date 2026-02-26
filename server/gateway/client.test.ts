@@ -112,4 +112,9 @@ describe("gateway client", () => {
     const gateway = await importGatewayModule(undefined);
     expect(() => gateway.notifyTaskStatus("task-1", "title", "in_progress", "ko")).not.toThrow();
   });
+
+  it("notifyTaskStatus는 스페인어 언어코드도 허용한다", async () => {
+    const gateway = await importGatewayModule(undefined);
+    expect(() => gateway.notifyTaskStatus("task-es", "título", "done", "es")).not.toThrow();
+  });
 });

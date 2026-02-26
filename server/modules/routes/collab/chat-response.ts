@@ -12,7 +12,7 @@ type ChatResponseDeps = {
   pickRandom: <T>(arr: T[]) => T;
   getFlairs: (agentName: string, lang: Lang) => string[];
   classifyIntent: (msg: string, lang: Lang) => Record<string, boolean>;
-  l: (ko: string[], en: string[], ja?: string[], zh?: string[]) => L10n;
+  l: (ko: string[], en: string[], ja?: string[], zh?: string[], es?: string[]) => L10n;
   pickL: (pool: L10n, lang: Lang) => string;
 };
 
@@ -42,6 +42,38 @@ export function createChatReplyGenerator(deps: ChatResponseDeps): {
         | { title: string }
         | undefined;
       if (t) taskTitle = t.title;
+    }
+
+    if (lang === "es") {
+      const taskEs = taskTitle ? ` "${taskTitle}"` : " la tarea actual";
+      if (agent.status === "offline") {
+        return `[Respuesta automática] ${nameTag} está fuera de línea en este momento. Lo revisará al volver.`;
+      }
+      if (agent.status === "break") {
+        if (intent.presence) return `Sí, ya regresé. ${nameTag} disponible, ¿qué necesitas?`;
+        if (intent.greeting) return `Hola, acabo de volver de una pausa breve. ¿En qué te ayudo?`;
+        return `Entendido, estaba en una pausa corta. Lo reviso ahora mismo.`;
+      }
+      if (agent.status === "working") {
+        if (intent.presence) return `Sí, aquí estoy. Estoy trabajando en${taskEs}.`; 
+        if (intent.greeting) return `Hola, ${nameTag} al habla. Estoy enfocado en${taskEs}, adelante.`;
+        if (intent.whatDoing) return `Ahora mismo estoy trabajando en${taskEs}. El avance va bien.`;
+        if (intent.report) return `Estado: trabajo activo en${taskEs}. Progreso estable y en curso.`;
+        if (intent.complaint) return `Recibido. Aceleraré el ritmo y priorizaré este frente.`;
+        if (intent.canDo) return `Sí, puedo hacerlo. Termino${taskEs} y lo tomo de inmediato.`;
+        return `Entendido. Al cerrar${taskEs} lo reviso enseguida.`;
+      }
+      if (intent.presence) return `Sí, ${nameTag} está disponible y en espera de indicaciones.`;
+      if (intent.greeting) return `Hola, ${nameTag} presente. ¿Qué necesitas hoy?`;
+      if (intent.whatDoing) return `Estoy en espera activa y disponible para una nueva tarea.`;
+      if (intent.praise || intent.encourage) return `Gracias. Seguiré empujando para entregar mejores resultados.`;
+      if (intent.report) return `Actualmente no tengo tareas asignadas y puedo iniciar una nueva de inmediato.`;
+      if (intent.joke) return `Buen comentario. Listo para seguir cuando quieras.`;
+      if (intent.complaint) return `Entendido. Tomo nota y haré mejoras desde ahora.`;
+      if (intent.opinion) return `Desde ${dept || "el equipo"}, lo veo viable. Si quieres, te comparto una recomendación concreta.`;
+      if (intent.canDo) return `Sí, puedo hacerlo. Compárteme el detalle y comienzo ahora.`;
+      if (intent.question) return `Buena pregunta. Lo verifico y te respondo enseguida.`;
+      return `Entendido. Quedo atento por si necesitas algo más.`;
     }
 
     if (agent.status === "offline")

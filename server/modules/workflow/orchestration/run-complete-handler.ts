@@ -292,6 +292,7 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
               [`${leaderName} is reviewing the result for '${task.title}'.`],
               [`${leaderName}が '${task.title}' の成果をレビュー中です。`],
               [`${leaderName} 正在审核 '${task.title}' 的结果。`],
+              [`${leaderName} está revisando el resultado de '${task.title}'.`],
             ),
             lang,
           ),
@@ -342,6 +343,7 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
                 [`CEO, reporting completion for '${task.title}'.\n\n📋 Result:\n${reportBody}`],
                 [`CEO、'${task.title}' の完了をご報告します。\n\n📋 結果:\n${reportBody}`],
                 [`CEO，汇报 '${task.title}' 已完成。\n\n📋 结果:\n${reportBody}`],
+                [`CEO, informo finalización de '${task.title}'.\n\n📋 Resultado:\n${reportBody}`],
               ),
               reportLang,
             )
@@ -351,6 +353,7 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
                 [`CEO, reporting completion for '${task.title}'. The work has been finished successfully.`],
                 [`CEO、'${task.title}' の完了をご報告します。作業は正常に完了しました。`],
                 [`CEO，汇报 '${task.title}' 已完成。任务已成功结束。`],
+                [`CEO, informo finalización de '${task.title}'. El trabajo se completó correctamente.`],
               ),
               reportLang,
             );
@@ -361,6 +364,7 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
             ["📌 Remediation/Collaboration Progress"],
             ["📌 補完/協業 進捗サマリー"],
             ["📌 整改/协作进度摘要"],
+            ["📌 Progreso de remediación/colaboración"],
           ),
           reportLang,
         );
@@ -376,6 +380,7 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
               [`\n\n📝 Changes (branch: ${wtInfo?.branchName}):\n${diffSummary}`],
               [`\n\n📝 変更点 (branch: ${wtInfo?.branchName}):\n${diffSummary}`],
               [`\n\n📝 变更内容 (branch: ${wtInfo?.branchName}):\n${diffSummary}`],
+              [`\n\n📝 Cambios (rama: ${wtInfo?.branchName}):\n${diffSummary}`],
             ),
             reportLang,
           );
@@ -439,6 +444,9 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
                     [
                       `CEO，'${task.title}' 执行时发生问题（退出码：${exitCode}）。\n\n❌ 错误内容:\n${errorBody}\n\n请重新分配代理或修改任务后重试。`,
                     ],
+                    [
+                      `CEO, la tarea '${task.title}' tuvo un problema (código de salida: ${exitCode}).\n\n❌ Error:\n${errorBody}\n\nVuelve a asignar el agente o ajusta la tarea y reintenta.`,
+                    ],
                   ),
                   failLang,
                 )
@@ -454,6 +462,9 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
                       `CEO、'${task.title}' の処理中に問題が発生しました (終了コード: ${exitCode})。担当再割り当てまたはタスク内容を修正して再試行してください。`,
                     ],
                     [`CEO，'${task.title}' 执行时发生问题（退出码：${exitCode}）。请重新分配代理或修改任务后重试。`],
+                    [
+                      `CEO, la tarea '${task.title}' tuvo un problema (código de salida: ${exitCode}). Vuelve a asignar el agente o ajusta la tarea y reintenta.`,
+                    ],
                   ),
                   failLang,
                 );
@@ -469,6 +480,7 @@ export function createRunCompleteHandler(deps: CreateRunCompleteHandlerDeps) {
               [`Task '${task.title}' failed (exit code: ${exitCode}).`],
               [`'${task.title}' のタスクが失敗しました (exit code: ${exitCode})。`],
               [`任务 '${task.title}' 失败（exit code: ${exitCode}）。`],
+              [`La tarea '${task.title}' falló (código de salida: ${exitCode}).`],
             ),
             failLang,
           ),

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { Agent, Message, Project } from "../types";
 import { buildSpriteMap } from "./AgentAvatar";
-import { useI18n } from "../i18n";
+import { localeName, useI18n } from "../i18n";
 import { createProject, getProjects } from "../api";
 import { parseDecisionRequest } from "./chat/decision-request";
 import type { DecisionOption } from "./chat/decision-request";
@@ -68,11 +68,11 @@ export function ChatPanel({
   const { t, locale } = useI18n();
   const isKorean = locale.startsWith("ko");
 
-  const tr = (ko: string, en: string, ja = en, zh = en) => t({ ko, en, ja, zh });
+  const tr = (ko: string, en: string, ja = en, zh = en, es = en) => t({ ko, en, ja, zh, es });
 
   const getAgentName = (agent: Agent | null | undefined) => {
     if (!agent) return "";
-    return isKorean ? agent.name_ko || agent.name : agent.name || agent.name_ko;
+    return localeName(locale, agent);
   };
 
   const getRoleLabel = (role: string) => {
@@ -86,9 +86,7 @@ export function ChatPanel({
   };
 
   const selectedDeptName = selectedAgent?.department
-    ? isKorean
-      ? selectedAgent.department.name_ko || selectedAgent.department.name
-      : selectedAgent.department.name || selectedAgent.department.name_ko
+    ? localeName(locale, selectedAgent.department)
     : selectedAgent?.department_id;
   const selectedTaskId = selectedAgent?.current_task_id;
 

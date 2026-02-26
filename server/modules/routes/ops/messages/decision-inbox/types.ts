@@ -125,6 +125,7 @@ export type LocalizedTextBuilder = (
   en: string[],
   ja: string[],
   zh: string[],
+  es?: string[],
 ) => unknown;
 
 export type PickLocalizedText = (localized: unknown, lang: string) => string;

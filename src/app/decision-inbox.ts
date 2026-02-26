@@ -41,6 +41,7 @@ function localizedOptionLabel(
         en: "Start Team-Lead Meeting",
         ja: "チームリーダー会議を進行",
         zh: "启动组长评审会议",
+        es: "Iniciar reunión de líderes de equipo",
       });
     }
     if (action === "keep_waiting") {
@@ -57,6 +58,7 @@ function localizedOptionLabel(
         en: "Add Follow-up Request",
         ja: "追加要請を入力",
         zh: "输入追加请求",
+        es: "Agregar solicitud de seguimiento",
       });
     }
   }
@@ -67,6 +69,7 @@ function localizedOptionLabel(
         en: "Resume Task",
         ja: "続行する",
         zh: "继续执行",
+        es: "Reanudar tarea",
       });
     }
     if (action === "keep_inbox") {
@@ -75,6 +78,7 @@ function localizedOptionLabel(
         en: "Keep in Inbox",
         ja: "Inboxで保留",
         zh: "保留在 Inbox",
+        es: "Mantener en Inbox",
       });
     }
   }
@@ -84,6 +88,7 @@ function localizedOptionLabel(
       en: "Skip to Next Round",
       ja: "次ラウンドへスキップ",
       zh: "跳到下一轮",
+      es: "Saltar a la siguiente ronda",
     });
   }
   return `${number}. ${action}`;

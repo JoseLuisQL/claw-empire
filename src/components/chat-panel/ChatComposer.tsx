@@ -3,7 +3,7 @@ import type { Agent } from "../../types";
 import ChatModeHint from "./ChatModeHint";
 
 type ChatMode = "chat" | "task" | "announcement" | "report";
-type Tr = (ko: string, en: string, ja?: string, zh?: string) => string;
+type Tr = (ko: string, en: string, ja?: string, zh?: string, es?: string) => string;
 
 interface ChatComposerProps {
   mode: ChatMode;
@@ -47,7 +47,7 @@ export default function ChatComposer({
           }`}
         >
           <span>📋</span>
-          <span>{tr("업무 지시", "Task", "タスク指示", "任务指示")}</span>
+          <span>{tr("업무 지시", "Task", "タスク指示", "任务指示", "Tarea")}</span>
         </button>
 
         <button
@@ -57,7 +57,7 @@ export default function ChatComposer({
           }`}
         >
           <span>📢</span>
-          <span>{tr("전사 공지", "Announcement", "全体告知", "全员公告")}</span>
+          <span>{tr("전사 공지", "Announcement", "全体告知", "全员公告", "Anuncio")}</span>
         </button>
 
         <button
@@ -70,7 +70,7 @@ export default function ChatComposer({
           }`}
         >
           <span>📊</span>
-          <span>{tr("보고 요청", "Report", "レポート依頼", "报告请求")}</span>
+          <span>{tr("보고 요청", "Report", "レポート依頼", "报告请求", "Informe")}</span>
         </button>
       </div>
 
@@ -102,6 +102,7 @@ export default function ChatComposer({
                     "Write an announcement...",
                     "全体告知内容を入力してください...",
                     "请输入公告内容...",
+                    "Escribe un anuncio...",
                   )
                 : mode === "task"
                   ? tr(
@@ -109,6 +110,7 @@ export default function ChatComposer({
                       "Write a task instruction...",
                       "タスク指示内容を入力してください...",
                       "请输入任务指示内容...",
+                      "Escribe una instrucción de tarea...",
                     )
                   : mode === "report"
                     ? tr(
@@ -116,6 +118,7 @@ export default function ChatComposer({
                         "Write a report request...",
                         "レポート依頼内容を入力してください...",
                         "请输入报告请求内容...",
+                        "Escribe una solicitud de informe...",
                       )
                     : selectedAgent
                       ? tr(
@@ -123,12 +126,14 @@ export default function ChatComposer({
                           `Send a message to ${getAgentName(selectedAgent)}...`,
                           `${getAgentName(selectedAgent)}にメッセージを送る...`,
                           `向 ${getAgentName(selectedAgent)} 发送消息...`,
+                          `Enviar un mensaje a ${getAgentName(selectedAgent)}...`,
                         )
                       : tr(
                           "메시지를 입력하세요...",
                           "Type a message...",
                           "メッセージを入力してください...",
                           "请输入消息...",
+                          "Escribe un mensaje...",
                         )
             }
             rows={1}
@@ -169,6 +174,7 @@ export default function ChatComposer({
             "Press Enter to send, Shift+Enter for a new line",
             "Enterで送信、Shift+Enterで改行",
             "按 Enter 发送，Shift+Enter 换行",
+            "Presiona Enter para enviar, Shift+Enter para nueva línea",
           )}
         </p>
       </div>

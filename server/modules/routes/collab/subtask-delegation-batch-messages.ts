@@ -2,7 +2,7 @@ import type { Lang } from "../../../types/lang.ts";
 import type { L10n } from "./language-policy.ts";
 
 interface MessageDeps {
-  l: (ko: string[], en: string[], ja?: string[], zh?: string[]) => L10n;
+  l: (ko: string[], en: string[], ja?: string[], zh?: string[], es?: string[]) => L10n;
   pickL: (pool: L10n, lang: Lang) => string;
 }
 
@@ -47,7 +47,7 @@ interface ExecutionStartParams extends MessageDeps {
 }
 
 export function teamLeadFallbackLabel(deps: MessageDeps, lang: Lang): string {
-  return deps.pickL(deps.l(["팀장"], ["Team Lead"], ["チームリーダー"], ["组长"]), lang);
+  return deps.pickL(deps.l(["팀장"], ["Team Lead"], ["チームリーダー"], ["组长"], ["Líder de equipo"]), lang);
 }
 
 export function buildQueueProgressNotice(params: QueueProgressParams): string {
@@ -60,6 +60,7 @@ export function buildQueueProgressNotice(params: QueueProgressParams): string {
       ],
       [`サブタスク一括委任進行中: ${targetDeptName} (${queueIndex + 1}/${queueTotal}, ${itemCount}件)`],
       [`批量 SubTask 委派进行中：${targetDeptName}（${queueIndex + 1}/${queueTotal}，${itemCount}项）`],
+      [`Delegación por lotes de subtareas en progreso: ${targetDeptName} (${queueIndex + 1}/${queueTotal}, ${itemCount} elemento(s))`],
     ),
     lang,
   );
@@ -79,6 +80,7 @@ export function buildOriginRequestMessage(params: OriginRequestParams): string {
         `${crossLeaderName}さん、'${parentTitle}' のサブタスク${itemCount}件（${batchTitle}）を順次チェックリストで一括対応お願いします！🤝`,
       ],
       [`${crossLeaderName}，请将'${parentTitle}'的 ${itemCount} 个 SubTask（${batchTitle}）按顺序清单一次性处理！🤝`],
+      [`${crossLeaderName}, por favor procesa ${itemCount} subtareas (${batchTitle}) de '${parentTitle}' como una sola lista secuencial en una ejecución. 🤝`],
     ),
     lang,
   );
@@ -99,6 +101,7 @@ export function buildCrossLeaderAckMessage(params: CrossLeaderAckParams): string
           `了解です、${originLeaderName}さん！${itemCount}件（${batchTitle}）を${execName}に一括割り当てて順次対応します 👍`,
         ],
         [`收到，${originLeaderName}！将把 ${itemCount} 项（${batchTitle}）批量分配给 ${execName} 按顺序处理 👍`],
+        [`Entendido, ${originLeaderName}. Asignaré ${itemCount} elementos (${batchTitle}) a ${execName} como un lote ordenado. 👍`],
       ),
       lang,
     );
@@ -110,6 +113,7 @@ export function buildCrossLeaderAckMessage(params: CrossLeaderAckParams): string
       [`Understood, ${originLeaderName}! I'll handle ${itemCount} items (${batchTitle}) myself in order. 👍`],
       [`承知しました、${originLeaderName}さん！${itemCount}件（${batchTitle}）を私が順次対応します 👍`],
       [`明白，${originLeaderName}！这 ${itemCount} 项（${batchTitle}）由我按顺序亲自处理 👍`],
+      [`Entendido, ${originLeaderName}. Yo mismo manejaré ${itemCount} elementos (${batchTitle}) en orden. 👍`],
     ),
     lang,
   );
@@ -122,6 +126,7 @@ export function buildDelegatedTitle(deps: MessageDeps, lang: Lang, itemCount: nu
       [`[Batched Subtask Collaboration x${itemCount}] ${batchTitle}`],
       [`[サブタスク一括協業 x${itemCount}] ${batchTitle}`],
       [`[批量 SubTask 协作 x${itemCount}] ${batchTitle}`],
+      [`[Colaboración por lotes de subtareas x${itemCount}] ${batchTitle}`],
     ),
     lang,
   );
@@ -135,6 +140,7 @@ export function buildDelegatedDescription(params: DelegatedDescriptionParams): s
       [`[Subtasks delegated from ${sourceDeptName}] ${parentSummary}\n\n[Sequential checklist]\n${delegatedChecklist}`],
       [`[サブタスク委任元 ${sourceDeptName}] ${parentSummary}\n\n[順次チェックリスト]\n${delegatedChecklist}`],
       [`[SubTask 委派来源 ${sourceDeptName}] ${parentSummary}\n\n[顺序清单]\n${delegatedChecklist}`],
+      [`[Subtareas delegadas desde ${sourceDeptName}] ${parentSummary}\n\n[Lista secuencial]\n${delegatedChecklist}`],
     ),
     lang,
   );
@@ -153,6 +159,7 @@ export function buildWorktreeCeoNote(
       [` (isolated branch: climpire/${delegatedTaskId.slice(0, 8)})`],
       [` (分離ブランチ: climpire/${delegatedTaskId.slice(0, 8)})`],
       [`（隔离分支: climpire/${delegatedTaskId.slice(0, 8)}）`],
+      [` (rama aislada: climpire/${delegatedTaskId.slice(0, 8)})`],
     ),
     lang,
   );
@@ -166,6 +173,7 @@ export function buildExecutionStartNotice(params: ExecutionStartParams): string 
       [`${targetDeptName} ${execName} started one batched run for ${itemCount} subtasks.${worktreeCeoNote}`],
       [`${targetDeptName}の${execName}がサブタスク${itemCount}件の一括作業を開始しました。${worktreeCeoNote}`],
       [`${targetDeptName} 的 ${execName} 已开始 ${itemCount} 个 SubTask 的批量处理。${worktreeCeoNote}`],
+      [`${targetDeptName} ${execName} inició una ejecución por lotes para ${itemCount} subtareas.${worktreeCeoNote}`],
     ),
     lang,
   );

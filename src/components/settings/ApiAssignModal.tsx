@@ -17,15 +17,15 @@ export default function ApiAssignModal({ t, localeTag, apiState }: ApiAssignModa
   const spriteMap = buildSpriteMap(apiAssignAgents);
   const localName = (nameEn: string, nameKo: string) => (localeTag === "ko" ? nameKo || nameEn : nameEn || nameKo);
   const ROLE_LABELS: Record<string, Record<string, string>> = {
-    team_leader: { ko: "팀장", en: "Team Leader", ja: "チームリーダー", zh: "组长" },
-    senior: { ko: "시니어", en: "Senior", ja: "シニア", zh: "高级" },
-    junior: { ko: "주니어", en: "Junior", ja: "ジュニア", zh: "初级" },
-    intern: { ko: "인턴", en: "Intern", ja: "インターン", zh: "实习生" },
+    team_leader: { ko: "팀장", en: "Team Leader", ja: "チームリーダー", zh: "组长", es: "Líder de equipo" },
+    senior: { ko: "시니어", en: "Senior", ja: "シニア", zh: "高级", es: "Senior" },
+    junior: { ko: "주니어", en: "Junior", ja: "ジュニア", zh: "初级", es: "Junior" },
+    intern: { ko: "인턴", en: "Intern", ja: "インターン", zh: "实习生", es: "Practicante" },
   };
 
   const roleBadge = (role: string) => {
     const label = ROLE_LABELS[role];
-    const text = label ? t(label as Record<"ko" | "en" | "ja" | "zh", string>) : role;
+    const text = label ? t(label as Record<"ko" | "en" | "ja" | "zh" | "es", string>) : role;
     const color =
       role === "team_leader"
         ? "text-amber-400 bg-amber-500/15"
@@ -92,7 +92,7 @@ export default function ApiAssignModal({ t, localeTag, apiState }: ApiAssignModa
               ko: "에이전트에 모델 배정",
               en: "Assign Model to Agent",
               ja: "エージェントにモデル割当",
-              zh: "分配模型给代理",
+              zh: "分配模型给代理", es: "Asignar modelo a agente"
             })}
           </h4>
           <p className="text-[11px] text-slate-400 mt-0.5 font-mono truncate">{apiAssignTarget.model}</p>
@@ -105,7 +105,7 @@ export default function ApiAssignModal({ t, localeTag, apiState }: ApiAssignModa
                 ko: "에이전트를 불러오는 중...",
                 en: "Loading agents...",
                 ja: "エージェント読み込み中...",
-                zh: "正在加载代理...",
+                zh: "正在加载代理...", es: "Cargando agentes..."
               })}
             </p>
           ) : (
@@ -127,7 +127,7 @@ export default function ApiAssignModal({ t, localeTag, apiState }: ApiAssignModa
                   <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-slate-700/40">
                     <span className="text-sm">📁</span>
                     <span className="text-[11px] font-semibold text-slate-500 tracking-wide">
-                      {t({ ko: "미배정", en: "Unassigned", ja: "未配属", zh: "未分配" })}
+                      {t({ ko: "미배정", en: "Unassigned", ja: "未配属", zh: "未分配", es: "Sin asignar" })}
                     </span>
                   </div>
                   {unassigned.map(renderAgentRow)}
@@ -142,7 +142,7 @@ export default function ApiAssignModal({ t, localeTag, apiState }: ApiAssignModa
             onClick={() => setApiAssignTarget(null)}
             className="text-xs px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-slate-300 rounded-lg transition-colors"
           >
-            {t({ ko: "닫기", en: "Close", ja: "閉じる", zh: "关闭" })}
+            {t({ ko: "닫기", en: "Close", ja: "閉じる", zh: "关闭", es: "Cerrar" })}
           </button>
         </div>
       </div>

@@ -13,7 +13,7 @@ type ParentTaskRow = {
 
 interface PromptDeps {
   db: any;
-  l: (ko: string[], en: string[], ja?: string[], zh?: string[]) => L10n;
+  l: (ko: string[], en: string[], ja?: string[], zh?: string[], es?: string[]) => L10n;
   pickL: (pool: L10n, lang: Lang) => string;
   resolveLang: (text?: string, fallback?: Lang) => Lang;
   getDeptName: (deptId: string) => string;

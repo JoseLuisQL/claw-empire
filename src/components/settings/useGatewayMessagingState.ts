@@ -45,7 +45,7 @@ export function useGatewayMessagingState({ tab, t }: { tab: SettingsTab; t: TFun
     try {
       const result = await api.sendGatewayMessage(gwSelected, gwText.trim());
       if (result.ok) {
-        setGwStatus({ ok: true, msg: t({ ko: "전송 완료!", en: "Sent!", ja: "送信完了!", zh: "发送成功!" }) });
+        setGwStatus({ ok: true, msg: t({ ko: "전송 완료!", en: "Sent!", ja: "送信完了!", zh: "发送成功!", es: "¡Enviado!" }) });
         setGwText("");
       } else {
         setGwStatus({ ok: false, msg: result.error || "Send failed" });

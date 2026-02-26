@@ -47,7 +47,7 @@ export default function AgentSelect({
   const padY = size === "md" ? "py-2" : "py-1";
   const avatarSize = size === "md" ? 22 : 18;
 
-  const tr = (ko: string, en: string, ja = en, zh = en) => t({ ko, en, ja, zh });
+  const tr = (ko: string, en: string, ja = en, zh = en, es = en) => t({ ko, en, ja, zh, es });
 
   const getAgentName = (agent: Agent) => localeName(locale, agent);
 

@@ -83,6 +83,7 @@ export default function ClassroomOverlay({ t, show, skillName, providers, agents
               en: `Training "${skillName}" skill...`,
               ja: `「${skillName}」スキル教育中...`,
               zh: `"${skillName}" 技能培训中...`,
+              es: `Entrenando la habilidad "${skillName}"...`,
             })}
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
@@ -90,7 +91,7 @@ export default function ClassroomOverlay({ t, show, skillName, providers, agents
               ko: "CLI 대표자들이 열심히 학습하고 있습니다 📖",
               en: "CLI representatives are studying hard 📖",
               ja: "CLI代表が一生懸命学習しています 📖",
-              zh: "CLI代表们正在努力学习 📖",
+              zh: "CLI代表们正在努力学习 📖", es: "Los representantes CLI están estudiando duro 📖"
             })}
           </div>
         </div>

@@ -29,7 +29,7 @@ export default function SkillsHeader({
               ko: "Agent Skills 문서고",
               en: "Agent Skills Library",
               ja: "Agent Skills ライブラリ",
-              zh: "Agent Skills 资料库",
+              zh: "Agent Skills 资料库", es: "Biblioteca de habilidades de agentes"
             })}
           </h2>
           <p className="text-sm text-slate-400 mt-1">
@@ -37,7 +37,7 @@ export default function SkillsHeader({
               ko: "AI 에이전트 스킬 디렉토리 · skills.sh 실시간 데이터",
               en: "AI agent skill directory · live skills.sh data",
               ja: "AI エージェントスキルディレクトリ · skills.sh リアルタイムデータ",
-              zh: "AI 代理技能目录 · skills.sh 实时数据",
+              zh: "AI 代理技能目录 · skills.sh 实时数据", es: "Directorio de habilidades de agentes IA · datos en vivo de skills.sh"
             })}
           </p>
         </div>
@@ -49,16 +49,16 @@ export default function SkillsHeader({
               ko: "커스텀 스킬 직접 추가",
               en: "Add custom skill",
               ja: "カスタムスキルを追加",
-              zh: "添加自定义技能",
+              zh: "添加自定义技能", es: "Agregar habilidad personalizada"
             })}
           >
             <span className="text-base">✏️</span>
-            {t({ ko: "커스텀 스킬 추가", en: "Add Custom Skill", ja: "カスタムスキル追加", zh: "添加自定义技能" })}
+            {t({ ko: "커스텀 스킬 추가", en: "Add Custom Skill", ja: "カスタムスキル追加", zh: "添加自定义技能", es: "Agregar habilidad personalizada" })}
           </button>
           <div className="text-right">
             <div className="text-2xl font-bold text-empire-gold">{skillsCount}</div>
             <div className="text-xs text-slate-500">
-              {t({ ko: "등록된 스킬", en: "Registered skills", ja: "登録済みスキル", zh: "已收录技能" })}
+              {t({ ko: "등록된 스킬", en: "Registered skills", ja: "登録済みスキル", zh: "已收录技能", es: "Habilidades registradas" })}
             </div>
           </div>
         </div>
@@ -74,7 +74,7 @@ export default function SkillsHeader({
               ko: "스킬 검색... (이름, 저장소, 카테고리)",
               en: "Search skills... (name, repo, category)",
               ja: "スキル検索...（名前・リポジトリ・カテゴリ）",
-              zh: "搜索技能...（名称、仓库、分类）",
+              zh: "搜索技能...（名称、仓库、分类）", es: "Buscar habilidades... (nombre, repo, categoría)"
             })}
             className="w-full bg-slate-900/60 border border-slate-600/50 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/25"
           />
@@ -93,11 +93,11 @@ export default function SkillsHeader({
           onChange={(e) => onSortByChange(e.target.value as "rank" | "name" | "installs")}
           className="bg-slate-900/60 border border-slate-600/50 rounded-lg px-3 py-2.5 text-sm text-slate-300 focus:outline-none focus:border-blue-500/50"
         >
-          <option value="rank">{t({ ko: "순위순", en: "By Rank", ja: "順位順", zh: "按排名" })}</option>
+          <option value="rank">{t({ ko: "순위순", en: "By Rank", ja: "順位順", zh: "按排名", es: "Por ranking" })}</option>
           <option value="installs">
-            {t({ ko: "설치순", en: "By Installs", ja: "インストール順", zh: "按安装量" })}
+            {t({ ko: "설치순", en: "By Installs", ja: "インストール順", zh: "按安装量", es: "Por instalaciones" })}
           </option>
-          <option value="name">{t({ ko: "이름순", en: "By Name", ja: "名前順", zh: "按名称" })}</option>
+          <option value="name">{t({ ko: "이름순", en: "By Name", ja: "名前順", zh: "按名称", es: "Por nombre" })}</option>
         </select>
       </div>
     </div>

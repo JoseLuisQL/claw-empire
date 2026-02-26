@@ -304,6 +304,9 @@ Whenever you complete a subtask, report it in this format:
         [
           "请完整地完成上述任务。可按需参考连续执行摘要、会话上下文和项目结构，但除非未解决清单确有需要，不要再次花时间探索项目结构。",
         ],
+        [
+          "Completa la tarea de forma exhaustiva. Puedes usar el resumen de continuidad, el contexto de conversación y la estructura del proyecto si aplica. No vuelvas a explorar la estructura salvo que los pendientes lo requieran. Responde y reporta estrictamente en español.",
+        ],
       ),
       taskLang,
     );
@@ -312,7 +315,26 @@ Whenever you complete a subtask, report it in this format:
       [
         (buildAvailableSkillsPromptBlock || ((providerName: string) => `[Available Skills][provider=${providerName || "unknown"}][unavailable]`))(provider),
         `[Task Session] id=${executionSession.sessionId} owner=${executionSession.agentId} provider=${executionSession.provider}`,
-        "This session is task-scoped. Keep continuity for this task only and do not cross-contaminate context from other projects.",
+        pickL(
+          l(
+            [
+              "이 세션은 이 작업 전용입니다. 이 작업 맥락만 유지하고 다른 프로젝트 맥락은 섞지 마세요.",
+            ],
+            [
+              "This session is task-scoped. Keep continuity for this task only and do not cross-contaminate context from other projects.",
+            ],
+            [
+              "このセッションは当該タスク専用です。このタスクの文脈のみ維持し、他プロジェクトの文脈を混在させないでください。",
+            ],
+            [
+              "此会话仅限当前任务。仅保持该任务上下文，不要混入其他项目上下文。",
+            ],
+            [
+              "Esta sesión está acotada a esta tarea. Mantén continuidad solo para esta tarea y no mezcles contexto de otros proyectos.",
+            ],
+          ),
+          taskLang,
+        ),
         projectStructureBlock,
         recentChanges ? `[Recent Changes]\n${recentChanges}` : "",
         `[Task] ${task.title}`,
@@ -325,7 +347,16 @@ Whenever you complete a subtask, report it in this format:
         deptConstraint,
         departmentPromptBlock,
         worktreePath
-          ? `NOTE: You are working in an isolated Git worktree branch (climpire/${id.slice(0, 8)}). Commit your changes normally.`
+          ? pickL(
+              l(
+                [`참고: 격리된 Git worktree 브랜치(climpire/${id.slice(0, 8)})에서 작업 중입니다. 평소처럼 커밋하세요.`],
+                [`NOTE: You are working in an isolated Git worktree branch (climpire/${id.slice(0, 8)}). Commit your changes normally.`],
+                [`注記: 分離された Git worktree ブランチ (climpire/${id.slice(0, 8)}) で作業中です。通常どおりコミットしてください。`],
+                [`注意：你正在隔离的 Git worktree 分支（climpire/${id.slice(0, 8)}）中工作。按常规提交即可。`],
+                [`Nota: estás trabajando en una rama Git worktree aislada (climpire/${id.slice(0, 8)}). Haz commit de forma normal.`],
+              ),
+              taskLang,
+            )
           : "",
         subtaskInstruction,
         subModelHint,
@@ -363,6 +394,7 @@ Whenever you complete a subtask, report it in this format:
               [` (isolated branch: climpire/${id.slice(0, 8)})`],
               [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
               [`（隔离分支: climpire/${id.slice(0, 8)}）`],
+              [` (rama aislada: climpire/${id.slice(0, 8)})`],
             ),
             taskLang,
           )
@@ -374,6 +406,7 @@ Whenever you complete a subtask, report it in this format:
             [`${assigneeName} started work on '${task.title}'.${worktreeNote}`],
             [`${assigneeName}が '${task.title}' の作業を開始しました。${worktreeNote}`],
             [`${assigneeName} 已开始处理 '${task.title}'。${worktreeNote}`],
+            [`${assigneeName} comenzó a trabajar en '${task.title}'.${worktreeNote}`],
           ),
           taskLang,
         ),
@@ -422,6 +455,7 @@ Whenever you complete a subtask, report it in this format:
               [` (isolated branch: climpire/${id.slice(0, 8)})`],
               [` (分離ブランチ: climpire/${id.slice(0, 8)})`],
               [`（隔离分支: climpire/${id.slice(0, 8)}）`],
+              [` (rama aislada: climpire/${id.slice(0, 8)})`],
             ),
             taskLang,
           )
@@ -433,6 +467,7 @@ Whenever you complete a subtask, report it in this format:
             [`${assigneeName} started work on '${task.title}'.${worktreeNote}`],
             [`${assigneeName}が '${task.title}' の作業を開始しました。${worktreeNote}`],
             [`${assigneeName} 已开始处理 '${task.title}'。${worktreeNote}`],
+            [`${assigneeName} comenzó a trabajar en '${task.title}'.${worktreeNote}`],
           ),
           taskLang,
         ),

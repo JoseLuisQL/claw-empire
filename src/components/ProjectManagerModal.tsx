@@ -253,6 +253,7 @@ export default function ProjectManagerModal({ agents, departments = [], onClose 
         en: `Delete project '${selectedProject.name}'?`,
         ja: `プロジェクト '${selectedProject.name}' を削除しますか？`,
         zh: `要删除项目 '${selectedProject.name}' 吗？`,
+        es: `¿Eliminar el proyecto '${selectedProject.name}'?`,
       }),
     );
     if (!confirmed) return;
@@ -277,12 +278,12 @@ export default function ProjectManagerModal({ agents, departments = [], onClose 
     }
   }, []);
 
-  const headerTitle = t({ ko: "프로젝트 관리", en: "Project Management", ja: "プロジェクト管理", zh: "项目管理" });
+  const headerTitle = t({ ko: "프로젝트 관리", en: "Project Management", ja: "プロジェクト管理", zh: "项目管理", es: "Gestión de proyectos" });
   const formTitle = editingProjectId
-    ? t({ ko: "프로젝트 수정", en: "Edit Project", ja: "プロジェクト編集", zh: "编辑项目" })
+    ? t({ ko: "프로젝트 수정", en: "Edit Project", ja: "プロジェクト編集", zh: "编辑项目", es: "Editar proyecto" })
     : isCreating
-      ? t({ ko: "신규 프로젝트 등록", en: "Register New Project", ja: "新規プロジェクト登録", zh: "新建项目" })
-      : t({ ko: "프로젝트 정보", en: "Project Info", ja: "プロジェクト情報", zh: "项目信息" });
+      ? t({ ko: "신규 프로젝트 등록", en: "Register New Project", ja: "新規プロジェクト登録", zh: "新建项目", es: "Registrar nuevo proyecto" })
+      : t({ ko: "프로젝트 정보", en: "Project Info", ja: "プロジェクト情報", zh: "项目信息", es: "Información del proyecto" });
 
   if (reportDetail) {
     return (
@@ -344,7 +345,7 @@ export default function ProjectManagerModal({ agents, departments = [], onClose 
               }}
               className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
             >
-              ← {t({ ko: "목록", en: "List", ja: "一覧", zh: "列表" })}
+              ← {t({ ko: "목록", en: "List", ja: "一覧", zh: "列表", es: "Lista" })}
             </button>
           </div>
 

@@ -522,6 +522,7 @@ export function createCrossDeptCooperationTools(deps: CrossDeptCooperationDeps) 
                   ["Please complete the task above thoroughly. Use the conversation context above if relevant."],
                   ["上記タスクを丁寧に完了してください。必要に応じて会話コンテキストを参照してください。"],
                   ["请完整地完成上述任务。可按需参考上方会话上下文。"],
+                  ["Completa la tarea de forma exhaustiva. Si aplica, usa el contexto de conversación de arriba. Responde y reporta estrictamente en español."],
                 ),
                 taskLang,
               ),

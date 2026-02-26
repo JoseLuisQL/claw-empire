@@ -76,7 +76,7 @@ export default function CreateTaskModalView({
       >
         <div className="flex items-center justify-between border-b border-slate-700 px-6 py-5">
           <h2 className="text-lg font-bold text-white">
-            {t({ ko: "새 업무 만들기", en: "Create New Task", ja: "新しいタスクを作成", zh: "创建新任务" })}
+            {t({ ko: "새 업무 만들기", en: "Create New Task", ja: "新しいタスクを作成", zh: "创建新任务", es: "Crear nueva tarea" })}
           </h2>
           <div className="flex items-center gap-2">
             <button
@@ -87,15 +87,15 @@ export default function CreateTaskModalView({
                 ko: "임시 저장 항목 열기",
                 en: "Open temporary drafts",
                 ja: "一時保存を開く",
-                zh: "打开临时草稿",
+                zh: "打开临时草稿", es: "Abrir borradores temporales"
               })}
             >
-              {`[${t({ ko: "임시", en: "Temp", ja: "一時", zh: "临时" })}(${draftsCount})]`}
+              {`[${t({ ko: "임시", en: "Temp", ja: "一時", zh: "临时", es: "Temp" })}(${draftsCount})]`}
             </button>
             <button
               onClick={onRequestClose}
               className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white"
-              title={t({ ko: "닫기", en: "Close", ja: "閉じる", zh: "关闭" })}
+              title={t({ ko: "닫기", en: "Close", ja: "閉じる", zh: "关闭", es: "Cerrar" })}
             >
               ✕
             </button>
@@ -109,7 +109,7 @@ export default function CreateTaskModalView({
             <div className="min-w-0 space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-300">
-                  {t({ ko: "제목", en: "Title", ja: "タイトル", zh: "标题" })} <span className="text-red-400">*</span>
+                  {t({ ko: "제목", en: "Title", ja: "タイトル", zh: "标题", es: "Título" })} <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
@@ -119,7 +119,7 @@ export default function CreateTaskModalView({
                     ko: "업무 제목을 입력하세요",
                     en: "Enter a task title",
                     ja: "タスクのタイトルを入力してください",
-                    zh: "请输入任务标题",
+                    zh: "请输入任务标题", es: "Ingresa un título de tarea"
                   })}
                   required
                   className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -128,7 +128,7 @@ export default function CreateTaskModalView({
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-300">
-                  {t({ ko: "설명", en: "Description", ja: "説明", zh: "说明" })}
+                  {t({ ko: "설명", en: "Description", ja: "説明", zh: "说明", es: "Descripción" })}
                 </label>
                 <textarea
                   value={description}
@@ -137,7 +137,7 @@ export default function CreateTaskModalView({
                     ko: "업무에 대한 상세 설명을 입력하세요",
                     en: "Enter a detailed description",
                     ja: "タスクの詳細説明を入力してください",
-                    zh: "请输入任务详细说明",
+                    zh: "请输入任务详细说明", es: "Ingresa una descripción detallada"
                   })}
                   rows={3}
                   className="w-full resize-none rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -147,7 +147,7 @@ export default function CreateTaskModalView({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-300">
-                    {t({ ko: "부서", en: "Department", ja: "部署", zh: "部门" })}
+                    {t({ ko: "부서", en: "Department", ja: "部署", zh: "部门", es: "Departamento" })}
                   </label>
                   <select
                     value={departmentId}
@@ -155,7 +155,7 @@ export default function CreateTaskModalView({
                     className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="">
-                      {t({ ko: "-- 전체 --", en: "-- All --", ja: "-- 全体 --", zh: "-- 全部 --" })}
+                      {t({ ko: "-- 전체 --", en: "-- All --", ja: "-- 全体 --", zh: "-- 全部 --", es: "-- Todo --" })}
                     </option>
                     {departments.map((department) => (
                       <option key={department.id} value={department.id}>
@@ -167,7 +167,7 @@ export default function CreateTaskModalView({
 
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-300">
-                    {t({ ko: "업무 유형", en: "Task Type", ja: "タスク種別", zh: "任务类型" })}
+                    {t({ ko: "업무 유형", en: "Task Type", ja: "タスク種別", zh: "任务类型", es: "Tipo de tarea" })}
                   </label>
                   <select
                     value={taskType}
@@ -237,7 +237,7 @@ export default function CreateTaskModalView({
               onClick={onRequestClose}
               className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-800"
             >
-              {t({ ko: "취소", en: "Cancel", ja: "キャンセル", zh: "取消" })}
+              {t({ ko: "취소", en: "Cancel", ja: "キャンセル", zh: "取消", es: "Cancelar" })}
             </button>
             <button
               type="submit"
@@ -245,8 +245,8 @@ export default function CreateTaskModalView({
               className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {submitBusy
-                ? t({ ko: "생성 중...", en: "Creating...", ja: "作成中...", zh: "创建中..." })
-                : t({ ko: "업무 만들기", en: "Create Task", ja: "タスク作成", zh: "创建任务" })}
+                ? t({ ko: "생성 중...", en: "Creating...", ja: "作成中...", zh: "创建中...", es: "Creando..." })
+                : t({ ko: "업무 만들기", en: "Create Task", ja: "タスク作成", zh: "创建任务", es: "Crear tarea" })}
             </button>
           </div>
         </form>
