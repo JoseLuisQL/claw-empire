@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.2-blue" alt="Releases" />
+  <img src="https://img.shields.io/badge/version-1.2.3-blue" alt="Releases" />
   <a href="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml"><img src="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
@@ -21,7 +21,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> &middot;
   <a href="#ai-installation-guide">AI 安装指南</a> &middot;
-  <a href="docs/releases/v1.2.2.md">发布说明</a> &middot;
+  <a href="docs/releases/v1.2.3.md">发布说明</a> &middot;
   <a href="#openclaw-integration">OpenClaw 集成</a> &middot;
   <a href="#dollar-command-logic">$ 命令逻辑</a> &middot;
   <a href="#功能特性">功能特性</a> &middot;
@@ -67,17 +67,18 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 
 ---
 
-## 最新发布 (v1.2.2)
+## 最新发布 (v1.2.3)
 
-- **Interrupt-Inject 功能新增** - 引入 `/api/tasks/:id/inject`，并实现会话证明令牌、注入队列哈希、终端侧注入/继续控制，新增“暂停-注入-恢复”流程能力。
-- **任务控制安全加固** - 对基于 Cookie 的变更请求启用 CSRF 校验，并为暂停/恢复/注入路径加入中断令牌校验。
-- **Office 按员工设置 CLI 模型** - Agent Detail 现支持按 CLI 员工覆盖主模型（`cli_model`），并支持 Codex 专用推理级别覆盖（`cli_reasoning_level`）。
-- **运行时覆盖一致传播** - 覆盖配置已统一贯通 run/orchestration/spawn/one-shot/delegation 执行路径；子代理模型仍按设置页全局配置管理。
-- **规划负责人快速判定路径（no-tools）** - 组长会议、决策收件箱汇总、最终报告汇总统一以 `noTools: true` 执行，避免 tool use 并加快判定/汇总。
-- **终端界面可读性优化** - 提升浅色模式下中断按钮对比度，并优化令牌/会话就绪状态提示文案。
-- **测试与文档补强** - 新增中断控制/注入测试、QA smoke 脚本，并更新 API 文档中的 CSRF 与注入前置要求。
+- **统一消息渠道 + 原生适配器** - 标准化内置渠道（`telegram`, `whatsapp`, `discord`, `googlechat`, `slack`, `signal`, `imessage`），并统一渠道级发送处理。
+- **聊天会话设置 UX 重构** - 通过统一“新增聊天”弹窗完成新增/编辑/删除，确认即保存，并显示会话级 Agent 头像/名称映射。
+- **渠道隔离的报告/会议转发** - 基于任务路由固定，仅将 `report`/`chat`/`status_update` 转发到原始频道/目标。
+- **消息渠道内决策回复流程** - 决策请求会发送到映射渠道，支持直接回复数字选项（如 `1`、`1,3`）并立即应用。
+- **决策去重 + 文案整理** - 增加重复发送防护，并将决策消息压缩为更适合移动端/消息渠道阅读的格式。
+- **完成报告可读性补丁** - 长篇完成报告会自动提炼为“关键结果/进度摘要”，并在首行加入角色身份化汇报文案。
+- **项目绑定与安全加固** - 任务升级前强制选择已有/新建项目，并通过 `PROJECT_PATH_ALLOWED_ROOTS` 限制路径创建范围。
+- **直聊稳定性增强** - 强化重复语句归一化与会话/路由解析逻辑。
 
-- 详细说明: [`docs/releases/v1.2.2.md`](docs/releases/v1.2.2.md)
+- 详细说明: [`docs/releases/v1.2.3.md`](docs/releases/v1.2.3.md)
 - API 文档: [`docs/api.md`](docs/api.md), [`docs/openapi.json`](docs/openapi.json)
 - 安全策略: [`SECURITY.md`](SECURITY.md)
 
@@ -130,7 +131,7 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 <tr>
 <td width="50%">
 
-**即时通讯集成** — 通过 Telegram、Discord、Slack 发送 `$` CEO 指令并接收实时任务更新（OpenClaw 集成）
+**即时通讯集成** — 可配置 Telegram、WhatsApp、Discord、Google Chat、Slack、Signal、iMessage 会话并发送 `$` CEO 指令
 
 <img src="Sample_Img/telegram.png" alt="Messenger Integration" width="100%" />
 </td>
@@ -191,7 +192,7 @@ Claw-Empire 将通过 **CLI**、**OAuth** 或 **直接 API Key** 连接的 AI �
 | **会议系统**          | 支持计划内及临时会议，AI 生成纪要并支持多轮审阅                                                                                      |
 | **Git Worktree 隔离** | 每个代理在独立的 git 分支中工作，仅在 CEO 批准后合并                                                                                 |
 | **多语言界面**        | 英语、韩语、日语、中文 — 自动检测或手动设置                                                                                          |
-| **即时通讯集成**      | Telegram、Discord、Slack 等 — 通过 OpenClaw gateway 发送 `$` CEO 指令并接收任务更新                                                  |
+| **即时通讯集成**      | Telegram、Discord、Slack 等 — 通过内置直连频道会话发送 `$` CEO 指令并接收任务更新（OpenClaw 可选）                                         |
 | **PowerPoint 导出**   | 从会议纪要和报告生成演示文稿幻灯片                                                                                                   |
 | **通信 QA 脚本**      | 内置 `test:comm:*` 脚本，可带重试与证据日志验证 CLI/OAuth/API 连通性                                                                 |
 | **应用内更新提示**    | 检查 GitHub 最新发布，发现新版本时在顶部显示含 OS 区分 `git pull` 指引和发布说明链接的横幅                                           |
@@ -293,15 +294,15 @@ curl -s http://127.0.0.1:8790/healthz
 
 期望结果：`{"ok":true,...}`
 
-`.env` 中的 `OPENCLAW_CONFIG` 建议使用绝对路径（文档建议不加引号）。在 `v1.0.5` 中，外层引号和前导 `~` 也会在运行时自动规范化。
+消息渠道在设置 UI 中配置，并持久化到 SQLite（`settings.messengerChannels`）。`.env` 中的消息令牌/频道变量已不再使用。
 
-### 第 4 步：可选 OpenClaw 网关 + inbox 验证
+### 第 4 步：可选消息渠道 + inbox 验证
 
 ```bash
-curl -s http://127.0.0.1:8790/api/gateway/targets
+curl -s http://127.0.0.1:8790/api/messenger/sessions
 ```
 
-当 `OPENCLAW_CONFIG` 有效时，将返回可用的消息会话列表。
+将返回设置中保存的消息会话列表。
 
 ```bash
 curl -X POST http://127.0.0.1:8790/api/inbox \
@@ -445,7 +446,7 @@ pnpm setup -- --port 8790
 
 <a id="openclaw-integration"></a>
 
-### OpenClaw 集成设置（Telegram/Discord/Slack）
+### OpenClaw 集成设置（Telegram/WhatsApp/Discord/Google Chat/Slack/Signal/iMessage）
 
 `install.sh` / `install.ps1`（或 `scripts/openclaw-setup.*`）会在可用时自动检测并写入 `OPENCLAW_CONFIG` 到 `.env`。
 

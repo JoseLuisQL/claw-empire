@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.2-blue" alt="Releases" />
+  <img src="https://img.shields.io/badge/version-1.2.3-blue" alt="Releases" />
   <a href="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml"><img src="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
@@ -21,7 +21,7 @@
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> &middot;
   <a href="#ai-installation-guide">AIインストール</a> &middot;
-  <a href="docs/releases/v1.2.2.md">リリースノート</a> &middot;
+  <a href="docs/releases/v1.2.3.md">リリースノート</a> &middot;
   <a href="#openclaw-integration">OpenClaw連携</a> &middot;
   <a href="#dollar-command-logic">$ コマンド</a> &middot;
   <a href="#機能一覧">機能一覧</a> &middot;
@@ -67,17 +67,18 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 
 ---
 
-## 最新リリース (v1.2.2)
+## 最新リリース (v1.2.3)
 
-- **割り込み注入（Interrupt-Inject）機能追加** - `/api/tasks/:id/inject` を導入し、セッション証明トークン/注入キューのハッシュ管理/ターミナルからの注入・再開操作を新規実装しました。
-- **タスク制御のセキュリティ強化** - Cookie認証の更新系リクエストに CSRF 検証を適用し、一時停止/再開/注入ルートに割り込みトークン検証を追加しました。
-- **Officeでエージェント単位CLIモデル設定** - Agent Detail で CLI エージェントごとのメインモデル上書き（`cli_model`）と Codex 専用の推論レベル上書き（`cli_reasoning_level`）をサポートしました。
-- **ランタイムへの上書き反映** - 実行/オーケストレーション/スポーン/ワンショット/委譲実行ルートへ一貫して反映され、サブエージェントモデルは引き続き Settings のグローバル設定に従います。
-- **企画リード高速判定パス（no-tools）** - チームリーダー会議、Decision Inbox 集約、最終レポート集約を `noTools: true` で実行し、ツール呼び出しなしで判定/要約を高速化しました。
-- **ターミナルUX/可読性改善** - ライトモードで割り込みボタンの視認性を改善し、トークン/セッション準備状態メッセージを明確化しました。
-- **テスト・ドキュメント更新** - 割り込み制御/注入テスト、QA スモークスクリプト、CSRF/注入要件を反映した API ドキュメント更新を追加しました。
+- **統合メッセンジャーチャネル + ネイティブアダプター** - 内蔵チャネル（`telegram`, `whatsapp`, `discord`, `googlechat`, `slack`, `signal`, `imessage`）を標準化し、チャネル別送信処理を統一しました。
+- **チャットセッション設定 UX を再設計** - 単一の「チャット追加」モーダルで作成/編集/削除を処理し、確定時に即時保存。セッションごとの Agent アバター/名前マッピングを表示します。
+- **チャネル分離レポート/会議リレー** - タスク単位ルート固定で `report`/`chat`/`status_update` を起点チャネル/ターゲットのみに中継します。
+- **メッセンジャー上の意思決定返信フロー** - 意思決定リクエストをマップ済みチャネルへ配信し、`1` や `1,3` の数値返信をそのまま反映します。
+- **意思決定の重複送信防止 + 表示整形** - 重複通知防止ガードを追加し、メッセンジャーで読みやすい圧縮フォーマットに整理しました。
+- **完了レポート可読性パッチ** - 長文完了レポートを「主要結果/進捗要約」中心に自動要約し、先頭をキャラクターのアイデンティティ文で送信します。
+- **プロジェクトバインディング + 安全性強化** - タスク昇格前に既存/新規プロジェクト選択を必須化し、`PROJECT_PATH_ALLOWED_ROOTS` によるパス生成制限を適用しました。
+- **直接チャットの安定化** - 重複文正規化とセッション/ルート解決ロジックを強化しました。
 
-- 詳細: [`docs/releases/v1.2.2.md`](docs/releases/v1.2.2.md)
+- 詳細: [`docs/releases/v1.2.3.md`](docs/releases/v1.2.3.md)
 - APIドキュメント: [`docs/api.md`](docs/api.md), [`docs/openapi.json`](docs/openapi.json)
 - セキュリティポリシー: [`SECURITY.md`](SECURITY.md)
 
@@ -130,7 +131,7 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 <tr>
 <td width="50%">
 
-**メッセンジャー連携** — Telegram、Discord、Slackから `$` CEOディレクティブを送信し、リアルタイムのタスク更新を受信（OpenClaw経由）
+**メッセンジャー連携** — Telegram、WhatsApp、Discord、Google Chat、Slack、Signal、iMessage セッションを設定して `$` CEOディレクティブを送信
 
 <img src="Sample_Img/telegram.png" alt="Messenger Integration" width="100%" />
 </td>
@@ -191,7 +192,7 @@ Claw-Empireは **CLI**、**OAuth**、**直接APIキー** で接続されたAIコ
 | **ミーティングシステム**        | 予定・臨時ミーティング対応；AIによる議事録自動生成と複数ラウンドレビュー機能                                                                 |
 | **Git Worktree分離**            | 各エージェントは独立したgitブランチで作業し、CEO承認後にのみマージ                                                                           |
 | **多言語UI**                    | 英語、韓国語、日本語、中国語 — 自動検出または手動設定                                                                                        |
-| **メッセンジャー連携**          | Telegram、Discord、Slack等 — OpenClawゲートウェイ経由で `$` CEOディレクティブ送信＆タスク更新受信                                            |
+| **メッセンジャー連携**          | Telegram、Discord、Slack等 — 内蔵の直接チャネルセッション経由で `$` CEOディレクティブ送信＆更新受信（OpenClawは任意）                     |
 | **PowerPointエクスポート**      | 議事録やレポートからプレゼンテーションスライドを自動生成                                                                                     |
 | **通信QAスクリプト**            | `test:comm:*` スクリプトでCLI/OAuth/API疎通を再試行・証跡ログ付きで検証                                                                      |
 | **インアプリ更新通知**          | GitHub 最新リリースを確認し、新バージョンがある場合にOS別 `git pull` 手順とリリースノートリンクを上部バナー表示                              |
@@ -293,15 +294,15 @@ curl -s http://127.0.0.1:8790/healthz
 
 期待値: `{"ok":true,...}`
 
-`.env` の `OPENCLAW_CONFIG` は絶対パスを推奨します（ドキュメントでは引用符なし推奨）。`v1.0.5` では引用符と先頭 `~` もランタイムで正規化されます。
+メッセンジャーチャネルは設定 UI で登録され、SQLite（`settings.messengerChannels`）に保存されます。.env ベースのメッセンジャートークン/チャネル変数は現在使用しません。
 
-### ステップ4: OpenClawゲートウェイ + inbox（任意）検証
+### ステップ4: メッセンジャー + inbox（任意）検証
 
 ```bash
-curl -s http://127.0.0.1:8790/api/gateway/targets
+curl -s http://127.0.0.1:8790/api/messenger/sessions
 ```
 
-`OPENCLAW_CONFIG` が有効なら、利用可能なメッセンジャーセッションが返ります。
+設定に保存されたメッセンジャーセッション一覧が返ります。
 
 ```bash
 curl -X POST http://127.0.0.1:8790/api/inbox \
@@ -445,7 +446,7 @@ pnpm setup -- --port 8790
 
 <a id="openclaw-integration"></a>
 
-### OpenClaw連携セットアップ（Telegram/Discord/Slack）
+### OpenClaw連携セットアップ（Telegram/WhatsApp/Discord/Google Chat/Slack/Signal/iMessage）
 
 `install.sh` / `install.ps1`（または `scripts/openclaw-setup.*`）は、可能な場合に `OPENCLAW_CONFIG` を自動検出して `.env` に設定します。
 

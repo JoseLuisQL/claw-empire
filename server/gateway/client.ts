@@ -1,46 +1,174 @@
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import fs from "node:fs";
-import { WebSocket } from "ws";
+import { DatabaseSync } from "node:sqlite";
+import { promisify } from "node:util";
 
-import { OPENCLAW_CONFIG_PATH, PKG_VERSION } from "../config/runtime.ts";
+import { DEFAULT_DB_PATH } from "../config/runtime.ts";
+import {
+  MESSENGER_CHANNELS,
+  NATIVE_MESSENGER_CHANNELS,
+  isNativeMessengerChannel,
+  type MessengerChannel,
+} from "../messenger/channels.ts";
 
-// ---------------------------------------------------------------------------
-// OpenClaw Gateway wake (ported from claw-kanban)
-// ---------------------------------------------------------------------------
-const GATEWAY_PROTOCOL_VERSION = 3;
-const GATEWAY_WS_PATH = "/ws";
 const WAKE_DEBOUNCE_DEFAULT_MS = 12_000;
+const SETTINGS_CACHE_TTL_MS = 3_000;
+const MESSENGER_SETTINGS_KEY = "messengerChannels";
+const SIGNAL_RPC_TIMEOUT_MS = 10_000;
+
+const execFileAsync = promisify(execFile);
+
 const wakeDebounce = new Map<string, number>();
-let cachedGateway: { url: string; token?: string; loadedAt: number } | null = null;
+let cachedMessengerConfig: { loadedAt: number; value: MessengerRuntimeConfig } | null = null;
 
-function loadGatewayConfig(): { url: string; token?: string } | null {
-  if (!OPENCLAW_CONFIG_PATH) return null;
+type GatewayLang = "ko" | "en" | "ja" | "zh";
+export type { MessengerChannel };
 
-  const now = Date.now();
-  if (cachedGateway && now - cachedGateway.loadedAt < 30_000) {
-    return { url: cachedGateway.url, token: cachedGateway.token };
-  }
-  try {
-    const raw = fs.readFileSync(OPENCLAW_CONFIG_PATH, "utf8");
-    const parsed = JSON.parse(raw) as {
-      gateway?: {
-        port?: number;
-        auth?: { token?: string };
-      };
-    };
-    const port = Number(parsed?.gateway?.port);
-    if (!Number.isFinite(port) || port <= 0) {
-      console.warn(`[Claw-Empire] invalid gateway.port in ${OPENCLAW_CONFIG_PATH}`);
-      return null;
-    }
-    const token = typeof parsed?.gateway?.auth?.token === "string" ? parsed.gateway.auth.token : undefined;
-    const url = `ws://127.0.0.1:${port}${GATEWAY_WS_PATH}`;
-    cachedGateway = { url, token, loadedAt: now };
-    return { url, token };
-  } catch (err) {
-    console.warn(`[Claw-Empire] failed to read gateway config: ${String(err)}`);
+type PersistedSession = {
+  id?: string;
+  name?: string;
+  targetId?: string;
+  enabled?: boolean;
+  agentId?: string;
+};
+
+type PersistedChannelConfig = {
+  token?: string;
+  sessions?: PersistedSession[];
+};
+
+type PersistedMessengerChannels = Partial<Record<MessengerChannel, PersistedChannelConfig>>;
+
+type MessengerSession = {
+  id: string;
+  name: string;
+  targetId: string;
+  enabled: boolean;
+  agentId?: string;
+};
+
+type MessengerChannelConfig = {
+  token: string;
+  sessions: MessengerSession[];
+};
+
+type MessengerRuntimeConfig = Record<MessengerChannel, MessengerChannelConfig>;
+
+export type MessengerRuntimeSession = {
+  sessionKey: string;
+  channel: MessengerChannel;
+  targetId: string;
+  enabled: boolean;
+  displayName: string;
+};
+
+function normalizeText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeSession(session: PersistedSession, channel: MessengerChannel, index: number): MessengerSession | null {
+  const targetId = normalizeText(session.targetId);
+  if (!targetId) {
     return null;
   }
+  const rawId = normalizeText(session.id);
+  const id = rawId || `${channel}-${index + 1}`;
+  const name = normalizeText(session.name) || `${channel.toUpperCase()} ${index + 1}`;
+  return {
+    id,
+    name,
+    targetId,
+    enabled: session.enabled !== false,
+    agentId: normalizeText(session.agentId) || undefined,
+  };
+}
+
+function buildEmptyConfig(): MessengerRuntimeConfig {
+  return MESSENGER_CHANNELS.reduce(
+    (acc, channel) => {
+      acc[channel] = { token: "", sessions: [] };
+      return acc;
+    },
+    {} as MessengerRuntimeConfig,
+  );
+}
+
+function hasOwn(obj: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function readPersistedMessengerChannels(): PersistedMessengerChannels | null {
+  const dbPath = process.env.DB_PATH ?? DEFAULT_DB_PATH;
+  let db: DatabaseSync | null = null;
+  try {
+    db = new DatabaseSync(dbPath);
+    const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(MESSENGER_SETTINGS_KEY) as
+      | { value?: unknown }
+      | undefined;
+    const raw = typeof row?.value === "string" ? row.value.trim() : "";
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as PersistedMessengerChannels;
+  } catch (err) {
+    console.warn(`[Claw-Empire] failed to load messenger channels settings: ${String(err)}`);
+    return null;
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function mergeChannelConfig(
+  channel: MessengerChannel,
+  base: MessengerChannelConfig,
+  persistedChannels: PersistedMessengerChannels | null,
+): MessengerChannelConfig {
+  const persisted = persistedChannels?.[channel];
+  if (!persisted || typeof persisted !== "object") {
+    return base;
+  }
+
+  const nextToken = hasOwn(persisted, "token") ? normalizeText(persisted.token) : base.token;
+
+  let nextSessions = base.sessions;
+  if (hasOwn(persisted, "sessions") && Array.isArray(persisted.sessions)) {
+    nextSessions = persisted.sessions
+      .map((session, index) => normalizeSession(session ?? {}, channel, index))
+      .filter((session): session is MessengerSession => Boolean(session));
+  }
+
+  return {
+    token: nextToken,
+    sessions: nextSessions,
+  };
+}
+
+function loadMessengerConfig(): MessengerRuntimeConfig {
+  const now = Date.now();
+  if (cachedMessengerConfig && now - cachedMessengerConfig.loadedAt < SETTINGS_CACHE_TTL_MS) {
+    return cachedMessengerConfig.value;
+  }
+
+  const persistedChannels = readPersistedMessengerChannels();
+  const defaults = buildEmptyConfig();
+  const merged = MESSENGER_CHANNELS.reduce(
+    (acc, channel) => {
+      acc[channel] = mergeChannelConfig(channel, defaults[channel], persistedChannels);
+      return acc;
+    },
+    {} as MessengerRuntimeConfig,
+  );
+
+  cachedMessengerConfig = { loadedAt: now, value: merged };
+  return merged;
 }
 
 function shouldSendWake(key: string, debounceMs: number): boolean {
@@ -49,132 +177,589 @@ function shouldSendWake(key: string, debounceMs: number): boolean {
   if (last && now - last < debounceMs) {
     return false;
   }
+
   wakeDebounce.set(key, now);
   if (wakeDebounce.size > 2000) {
-    for (const [k, ts] of wakeDebounce) {
+    for (const [candidateKey, ts] of wakeDebounce) {
       if (now - ts > debounceMs * 4) {
-        wakeDebounce.delete(k);
+        wakeDebounce.delete(candidateKey);
       }
     }
   }
+
   return true;
 }
 
-async function sendGatewayWake(text: string): Promise<void> {
-  const config = loadGatewayConfig();
-  if (!config) {
-    throw new Error("gateway config unavailable");
+function splitPipeParts(raw: string): string[] {
+  return raw
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function removeChannelPrefix(channel: MessengerChannel, value: string): string {
+  const lower = value.toLowerCase();
+  const prefixes: string[] = [`${channel}:`, "channel:", "chat:"];
+  if (channel === "googlechat") {
+    prefixes.push("googlechat:", "google-chat:", "google_chat:", "gchat:");
+  }
+  if (channel === "imessage") {
+    prefixes.push("imessage:", "i-message:", "i_message:");
+  }
+  for (const prefix of prefixes) {
+    if (lower.startsWith(prefix)) {
+      return value.slice(prefix.length).trim();
+    }
+  }
+  return value.trim();
+}
+
+function normalizeSignalBaseUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/\/+$/, "");
+  }
+  return `http://${trimmed}`.replace(/\/+$/, "");
+}
+
+function parseWhatsAppTransport(tokenRaw: string, targetRaw: string): {
+  accessToken: string;
+  phoneNumberId: string;
+  recipient: string;
+} {
+  let accessToken = normalizeText(tokenRaw);
+  const target = removeChannelPrefix("whatsapp", targetRaw);
+  const targetMatch = target.match(/^(\d+)\s*[:|/]\s*(.+)$/);
+  let phoneNumberId = targetMatch?.[1]?.trim() ?? "";
+  const recipient = (targetMatch?.[2] ?? target).trim();
+
+  const tokenParts = splitPipeParts(accessToken);
+  if (!phoneNumberId && tokenParts.length >= 2) {
+    const first = tokenParts[0];
+    const last = tokenParts[tokenParts.length - 1];
+    if (/^\d+$/.test(first)) {
+      phoneNumberId = first;
+      accessToken = tokenParts.slice(1).join("|");
+    } else if (/^\d+$/.test(last)) {
+      phoneNumberId = last;
+      accessToken = tokenParts.slice(0, -1).join("|");
+    }
   }
 
-  const connectId = randomUUID();
-  const wakeId = randomUUID();
-  const instanceId = randomUUID();
+  if (!accessToken) {
+    throw new Error("whatsapp token missing");
+  }
+  if (!phoneNumberId) {
+    throw new Error(
+      "whatsapp phone_number_id missing (targetId: `<phone_number_id>:<recipient>` or include numeric id in token)",
+    );
+  }
+  if (!recipient) {
+    throw new Error("whatsapp recipient missing");
+  }
 
-  return await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    let timer: NodeJS.Timeout | null = null;
-    const ws = new WebSocket(config.url);
+  return { accessToken, phoneNumberId, recipient };
+}
 
-    const finish = (err?: Error) => {
-      if (settled) return;
-      settled = true;
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      try {
-        ws.close();
-      } catch {
-        // ignore
-      }
-      if (err) {
-        reject(err);
-      } else {
-        resolve();
-      }
+function parseGoogleChatTransport(tokenRaw: string, targetRaw: string): { url: string } {
+  const token = normalizeText(tokenRaw);
+  const target = removeChannelPrefix("googlechat", targetRaw).replace(/^\/+/, "");
+  if (!token) {
+    throw new Error("googlechat token missing");
+  }
+
+  if (/^https?:\/\//i.test(token)) {
+    return { url: token };
+  }
+
+  const tokenParts = splitPipeParts(token);
+  if (tokenParts.length >= 2 && target) {
+    const apiKey = tokenParts[0];
+    const webhookToken = tokenParts.slice(1).join("|");
+    if (!apiKey || !webhookToken) {
+      throw new Error("googlechat token format invalid");
+    }
+    return {
+      url: `https://chat.googleapis.com/v1/${target}/messages?key=${encodeURIComponent(
+        apiKey,
+      )}&token=${encodeURIComponent(webhookToken)}`,
     };
+  }
 
-    const send = (payload: unknown) => {
-      try {
-        ws.send(JSON.stringify(payload));
-      } catch (err) {
-        finish(err instanceof Error ? err : new Error(String(err)));
-      }
-    };
+  throw new Error("googlechat token must be webhook URL or `key|token` (with targetId `spaces/...`)");
+}
 
-    const connectParams = {
-      minProtocol: GATEWAY_PROTOCOL_VERSION,
-      maxProtocol: GATEWAY_PROTOCOL_VERSION,
-      client: {
-        id: "cli",
-        displayName: "Claw-Empire",
-        version: PKG_VERSION,
-        platform: process.platform,
-        mode: "backend",
-        instanceId,
-      },
-      ...(config.token ? { auth: { token: config.token } } : {}),
-      role: "operator",
-      scopes: ["operator.admin"],
-      caps: [],
-    };
+function parseSignalTransport(tokenRaw: string): { baseUrl: string; account?: string } {
+  const token = normalizeText(tokenRaw);
+  if (!token) {
+    throw new Error("signal token missing");
+  }
+  const tokenParts = splitPipeParts(token);
+  const baseUrl = normalizeSignalBaseUrl(tokenParts[0] ?? token);
+  if (!baseUrl) {
+    throw new Error("signal base URL missing");
+  }
+  let account: string | undefined;
+  for (const part of tokenParts.slice(1)) {
+    const normalized = part.trim();
+    if (!normalized) continue;
+    if (/^(account|acct|accountid)\s*=/i.test(normalized)) {
+      account = normalized.replace(/^(account|acct|accountid)\s*=\s*/i, "").trim() || account;
+      continue;
+    }
+    if (!account && !normalized.includes("=")) {
+      account = normalized;
+    }
+  }
+  return { baseUrl, account };
+}
 
-    ws.on("open", () => {
-      send({ type: "req", id: connectId, method: "connect", params: connectParams });
-    });
+function parseSignalTarget(targetRaw: string): { recipient?: string[]; groupId?: string; username?: string[] } {
+  let value = removeChannelPrefix("signal", targetRaw);
+  if (!value) {
+    throw new Error("signal target missing");
+  }
+  const lower = value.toLowerCase();
+  if (lower.startsWith("group:")) {
+    value = value.slice("group:".length).trim();
+    if (!value) throw new Error("signal group id missing");
+    return { groupId: value };
+  }
+  if (lower.startsWith("username:")) {
+    value = value.slice("username:".length).trim();
+    if (!value) throw new Error("signal username missing");
+    return { username: [value] };
+  }
+  if (lower.startsWith("u:")) {
+    value = value.slice("u:".length).trim();
+    if (!value) throw new Error("signal username missing");
+    return { username: [value] };
+  }
+  return { recipient: [value] };
+}
 
-    ws.on("message", (data: Buffer | string) => {
-      const raw = typeof data === "string" ? data : data.toString("utf8");
-      if (!raw) return;
-      let msg: any;
-      try {
-        msg = JSON.parse(raw);
-      } catch {
-        return;
-      }
-      if (!msg || msg.type !== "res") return;
-      if (msg.id === connectId) {
-        if (!msg.ok) {
-          finish(new Error(msg.error?.message ?? "gateway connect failed"));
-          return;
-        }
-        send({ type: "req", id: wakeId, method: "wake", params: { mode: "now", text } });
-        return;
-      }
-      if (msg.id === wakeId) {
-        if (!msg.ok) {
-          finish(new Error(msg.error?.message ?? "gateway wake failed"));
-          return;
-        }
-        finish();
-      }
-    });
-
-    ws.on("error", () => {
-      finish(new Error("gateway socket error"));
-    });
-
-    ws.on("close", () => {
-      finish(new Error("gateway socket closed"));
-    });
-
-    timer = setTimeout(() => {
-      finish(new Error("gateway wake timeout"));
-    }, 8000);
-    (timer as NodeJS.Timeout).unref?.();
+async function sendTelegramMessage(token: string, chatId: string, text: string): Promise<void> {
+  const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      disable_web_page_preview: true,
+    }),
   });
+
+  const payload = (await r.json().catch(() => null)) as { ok?: boolean; description?: string } | null;
+  if (!r.ok || payload?.ok === false) {
+    throw new Error(payload?.description || `telegram send failed (${r.status})`);
+  }
+}
+
+async function sendTelegramTyping(token: string, chatId: string): Promise<void> {
+  const r = await fetch(`https://api.telegram.org/bot${token}/sendChatAction`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      action: "typing",
+    }),
+  });
+
+  const payload = (await r.json().catch(() => null)) as { ok?: boolean; description?: string } | null;
+  if (!r.ok || payload?.ok === false) {
+    throw new Error(payload?.description || `telegram typing failed (${r.status})`);
+  }
+}
+
+async function sendDiscordMessage(token: string, channelId: string, text: string): Promise<void> {
+  const r = await fetch(`https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bot ${token}`,
+    },
+    body: JSON.stringify({ content: text }),
+  });
+
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    throw new Error(`discord send failed (${r.status})${detail ? `: ${detail}` : ""}`);
+  }
+}
+
+async function sendDiscordTyping(token: string, channelId: string): Promise<void> {
+  const r = await fetch(`https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}/typing`, {
+    method: "POST",
+    headers: {
+      authorization: `Bot ${token}`,
+    },
+  });
+
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    throw new Error(`discord typing failed (${r.status})${detail ? `: ${detail}` : ""}`);
+  }
+}
+
+async function sendSlackMessage(token: string, channelId: string, text: string): Promise<void> {
+  const r = await fetch("https://slack.com/api/chat.postMessage", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ channel: channelId, text }),
+  });
+
+  const payload = (await r.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+  if (!r.ok || payload?.ok === false) {
+    throw new Error(payload?.error || `slack send failed (${r.status})`);
+  }
+}
+
+async function sendWhatsAppMessage(token: string, targetId: string, text: string): Promise<void> {
+  const { accessToken, phoneNumberId, recipient } = parseWhatsAppTransport(token, targetId);
+  const r = await fetch(`https://graph.facebook.com/v22.0/${encodeURIComponent(phoneNumberId)}/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: recipient,
+      type: "text",
+      text: {
+        body: text,
+        preview_url: false,
+      },
+    }),
+  });
+
+  const payload = (await r.json().catch(() => null)) as
+    | { error?: { message?: string } | null; messages?: Array<{ id?: string }> }
+    | null;
+  if (!r.ok || payload?.error) {
+    const message = payload?.error?.message;
+    throw new Error(message || `whatsapp send failed (${r.status})`);
+  }
+}
+
+async function sendGoogleChatMessage(token: string, targetId: string, text: string): Promise<void> {
+  const { url } = parseGoogleChatTransport(token, targetId);
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ text }),
+  });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    throw new Error(`googlechat send failed (${r.status})${detail ? `: ${detail}` : ""}`);
+  }
+}
+
+async function signalRpcRequest(params: {
+  baseUrl: string;
+  method: "send" | "sendTyping";
+  payload: Record<string, unknown>;
+}): Promise<void> {
+  const r = await fetch(`${params.baseUrl}/api/v1/rpc`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: randomUUID(),
+      method: params.method,
+      params: params.payload,
+    }),
+    signal: AbortSignal.timeout(SIGNAL_RPC_TIMEOUT_MS),
+  });
+  if (r.status === 201) {
+    return;
+  }
+  const responseText = await r.text().catch(() => "");
+  if (!r.ok) {
+    throw new Error(`signal rpc failed (${r.status})${responseText ? `: ${responseText}` : ""}`);
+  }
+  if (!responseText.trim()) {
+    return;
+  }
+  const payload = JSON.parse(responseText) as {
+    error?: { code?: number; message?: string };
+  };
+  if (payload?.error) {
+    throw new Error(
+      `signal rpc ${payload.error.code ?? "unknown"}: ${payload.error.message ?? "unknown error"}`,
+    );
+  }
+}
+
+async function sendSignalMessage(token: string, targetId: string, text: string): Promise<void> {
+  const transport = parseSignalTransport(token);
+  const target = parseSignalTarget(targetId);
+  const payload: Record<string, unknown> = { ...target, message: text };
+  if (transport.account) {
+    payload.account = transport.account;
+  }
+  await signalRpcRequest({
+    baseUrl: transport.baseUrl,
+    method: "send",
+    payload,
+  });
+}
+
+async function sendSignalTyping(token: string, targetId: string): Promise<void> {
+  const transport = parseSignalTransport(token);
+  const target = parseSignalTarget(targetId);
+  const payload: Record<string, unknown> = { ...target };
+  if (transport.account) {
+    payload.account = transport.account;
+  }
+  await signalRpcRequest({
+    baseUrl: transport.baseUrl,
+    method: "sendTyping",
+    payload,
+  });
+}
+
+async function sendIMessageMessage(targetId: string, text: string): Promise<void> {
+  if (process.platform !== "darwin") {
+    throw new Error("imessage transport requires macOS");
+  }
+  const normalizedTarget = removeChannelPrefix("imessage", targetId);
+  if (!normalizedTarget) {
+    throw new Error("imessage target missing");
+  }
+  const script = [
+    "on run argv",
+    "set targetHandle to item 1 of argv",
+    "set targetMessage to item 2 of argv",
+    "tell application \"Messages\"",
+    "set targetService to 1st service whose service type = iMessage",
+    "set targetBuddy to buddy targetHandle of targetService",
+    "send targetMessage to targetBuddy",
+    "end tell",
+    "end run",
+  ].join("\n");
+  await execFileAsync("osascript", ["-e", script, normalizedTarget, text], {
+    timeout: 20_000,
+    maxBuffer: 1024 * 1024,
+  });
+}
+
+async function sendByChannel(channel: MessengerChannel, token: string, targetId: string, text: string): Promise<void> {
+  if (!isNativeMessengerChannel(channel)) {
+    throw new Error(`channel transport not implemented: ${channel}`);
+  }
+  const normalizedToken = normalizeText(token);
+  if (!normalizedToken && channel !== "imessage") {
+    throw new Error(`${channel} token missing`);
+  }
+  const normalizedTarget = normalizeText(targetId);
+  if (!normalizedTarget) {
+    throw new Error(`${channel} target missing`);
+  }
+
+  if (channel === "telegram") {
+    await sendTelegramMessage(normalizedToken, normalizedTarget, text);
+    return;
+  }
+  if (channel === "discord") {
+    await sendDiscordMessage(normalizedToken, normalizedTarget, text);
+    return;
+  }
+  if (channel === "slack") {
+    await sendSlackMessage(normalizedToken, normalizedTarget, text);
+    return;
+  }
+  if (channel === "whatsapp") {
+    await sendWhatsAppMessage(normalizedToken, normalizedTarget, text);
+    return;
+  }
+  if (channel === "googlechat") {
+    await sendGoogleChatMessage(normalizedToken, normalizedTarget, text);
+    return;
+  }
+  if (channel === "signal") {
+    await sendSignalMessage(normalizedToken, normalizedTarget, text);
+    return;
+  }
+  if (channel === "imessage") {
+    await sendIMessageMessage(normalizedTarget, text);
+    return;
+  }
+  throw new Error(`channel transport not implemented: ${channel}`);
+}
+
+async function sendTypingByChannel(channel: MessengerChannel, token: string, targetId: string): Promise<void> {
+  if (!isNativeMessengerChannel(channel)) {
+    return;
+  }
+  if (!token) {
+    throw new Error(`${channel} token missing`);
+  }
+  const normalizedTarget = normalizeText(targetId);
+  if (!normalizedTarget) {
+    throw new Error(`${channel} target missing`);
+  }
+
+  if (channel === "telegram") {
+    await sendTelegramTyping(token, normalizedTarget);
+    return;
+  }
+  if (channel === "discord") {
+    await sendDiscordTyping(token, normalizedTarget);
+    return;
+  }
+  if (channel === "signal") {
+    await sendSignalTyping(token, normalizedTarget);
+    return;
+  }
+  // Slack bot API has no native typing indicator endpoint.
+}
+
+export function listMessengerSessions(): MessengerRuntimeSession[] {
+  const config = loadMessengerConfig();
+  const sessions: MessengerRuntimeSession[] = [];
+
+  for (const channel of MESSENGER_CHANNELS) {
+    const channelConfig = config[channel];
+    for (const session of channelConfig.sessions) {
+      const sessionKey = `${channel}:${session.id}`;
+      sessions.push({
+        sessionKey,
+        channel,
+        targetId: session.targetId,
+        enabled: session.enabled,
+        displayName: session.name,
+      });
+    }
+  }
+
+  return sessions;
+}
+
+export async function sendMessengerMessage(params: {
+  channel: MessengerChannel;
+  targetId: string;
+  text: string;
+}): Promise<void> {
+  const text = normalizeText(params.text);
+  if (!text) {
+    throw new Error("message text required");
+  }
+
+  const config = loadMessengerConfig();
+  const channelConfig = config[params.channel];
+  if (!channelConfig) {
+    throw new Error(`unsupported channel: ${params.channel}`);
+  }
+
+  await sendByChannel(params.channel, channelConfig.token, params.targetId, text);
+}
+
+export async function sendMessengerTyping(params: {
+  channel: MessengerChannel;
+  targetId: string;
+}): Promise<void> {
+  const config = loadMessengerConfig();
+  const channelConfig = config[params.channel];
+  if (!channelConfig) {
+    throw new Error(`unsupported channel: ${params.channel}`);
+  }
+  if (
+    !isNativeMessengerChannel(params.channel) ||
+    params.channel === "slack" ||
+    params.channel === "whatsapp" ||
+    params.channel === "googlechat" ||
+    params.channel === "imessage"
+  ) {
+    return;
+  }
+  await sendTypingByChannel(params.channel, channelConfig.token, params.targetId);
+}
+
+export async function sendMessengerSessionMessage(sessionKey: string, text: string): Promise<void> {
+  const normalizedKey = normalizeText(sessionKey);
+  if (!normalizedKey) {
+    throw new Error("sessionKey required");
+  }
+  const payload = normalizeText(text);
+  if (!payload) {
+    throw new Error("message text required");
+  }
+
+  const config = loadMessengerConfig();
+  const sessions = listMessengerSessions();
+  const session = sessions.find((item) => item.sessionKey === normalizedKey);
+  if (!session) {
+    throw new Error("session not found");
+  }
+
+  const token = config[session.channel].token;
+  await sendByChannel(session.channel, token, session.targetId, payload);
+}
+
+async function sendMessengerWake(text: string): Promise<void> {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  const config = loadMessengerConfig();
+  const targets: Array<{ channel: MessengerChannel; targetId: string }> = [];
+  for (const channel of NATIVE_MESSENGER_CHANNELS) {
+    const token = config[channel]?.token;
+    if (channel !== "imessage" && !token) continue;
+    for (const session of config[channel].sessions) {
+      if (!session.enabled) continue;
+      if (session.agentId) continue;
+      targets.push({ channel, targetId: session.targetId });
+    }
+  }
+
+  if (targets.length === 0) {
+    return;
+  }
+
+  const results = await Promise.allSettled(
+    targets.map(async (target) => {
+      const token = config[target.channel].token;
+      await sendByChannel(target.channel, token, target.targetId, trimmed);
+    }),
+  );
+
+  const failures: string[] = [];
+  for (let i = 0; i < results.length; i += 1) {
+    const result = results[i];
+    if (result?.status === "fulfilled") {
+      continue;
+    }
+    const target = targets[i];
+    failures.push(`${target.channel}:${target.targetId} => ${String(result?.reason ?? "unknown error")}`);
+  }
+
+  if (failures.length > 0) {
+    throw new Error(failures.join(" | "));
+  }
 }
 
 function queueWake(params: { key: string; text: string; debounceMs?: number }) {
-  if (!OPENCLAW_CONFIG_PATH) return;
   const debounceMs = params.debounceMs ?? WAKE_DEBOUNCE_DEFAULT_MS;
-  if (!shouldSendWake(params.key, debounceMs)) return;
-  void sendGatewayWake(params.text).catch((err) => {
-    console.warn(`[Claw-Empire] wake failed (${params.key}): ${String(err)}`);
+  if (!shouldSendWake(params.key, debounceMs)) {
+    return;
+  }
+
+  void sendMessengerWake(params.text).catch((err) => {
+    console.warn(`[Claw-Empire] messenger notification failed (${params.key}): ${String(err)}`);
   });
 }
 
-type GatewayLang = "ko" | "en" | "ja" | "zh" | "es";
+type GatewayLang = "ko" | "en" | "ja" | "zh";
 
 function detectGatewayLang(text: string): GatewayLang {
   const ko = text.match(/[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/g)?.length ?? 0;
@@ -219,7 +804,6 @@ function resolveStatusLabel(status: string, lang: GatewayLang): string {
 }
 
 export function notifyTaskStatus(taskId: string, title: string, status: string, lang?: string): void {
-  if (!OPENCLAW_CONFIG_PATH) return;
   const resolvedLang = normalizeGatewayLang(lang, title);
   const emoji =
     status === "in_progress"
@@ -237,31 +821,10 @@ export function notifyTaskStatus(taskId: string, title: string, status: string, 
   });
 }
 
-// ---------------------------------------------------------------------------
-// Gateway HTTP REST invoke (for /tools/invoke endpoint)
-// ---------------------------------------------------------------------------
-export async function gatewayHttpInvoke(req: {
+export async function gatewayHttpInvoke(_req: {
   tool: string;
   action?: string;
   args?: Record<string, any>;
 }): Promise<any> {
-  const config = loadGatewayConfig();
-  if (!config) throw new Error("gateway config unavailable");
-  const portMatch = config.url.match(/:(\d+)/);
-  if (!portMatch) throw new Error("cannot extract port from gateway URL");
-  const baseUrl = `http://127.0.0.1:${portMatch[1]}`;
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (config.token) headers.authorization = `Bearer ${config.token}`;
-  const r = await fetch(`${baseUrl}/tools/invoke`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(req),
-  });
-  if (!r.ok) {
-    const body = await r.text().catch(() => "");
-    throw new Error(`gateway invoke failed: ${r.status}${body ? `: ${body}` : ""}`);
-  }
-  const data = (await r.json()) as { ok: boolean; result?: any; error?: { message?: string } };
-  if (!data.ok) throw new Error(data.error?.message || "tool invoke error");
-  return data.result;
+  throw new Error("openclaw gateway integration has been removed; use direct messenger transports");
 }

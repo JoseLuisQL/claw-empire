@@ -1,3 +1,5 @@
+import type { MessengerChannel } from "../../../messenger/channels.ts";
+
 export interface AgentRow {
   id: string;
   name: string;
@@ -22,6 +24,8 @@ export type DelegationOptions = {
   projectId?: string | null;
   projectPath?: string | null;
   projectContext?: string | null;
+  messengerChannel?: MessengerChannel;
+  messengerTargetId?: string | null;
 };
 
 export type MeetingReviewDecision = "reviewing" | "approved" | "hold";

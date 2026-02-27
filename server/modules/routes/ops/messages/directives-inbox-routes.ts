@@ -1,9 +1,15 @@
 import os from "node:os";
 import path from "node:path";
 import { INBOX_WEBHOOK_SECRET } from "../../../../config/runtime.ts";
+import {
+  resolveSessionAgentRouteFromDb,
+  resolveSessionTargetRouteFromDb,
+  resolveSourceChatRoute,
+} from "../../../../messenger/session-agent-routing.ts";
 import { safeSecretEquals } from "../../../../security/auth.ts";
 import type { RuntimeContext } from "../../../../types/runtime-context.ts";
 import type { AgentRow, DelegationOptions, StoredMessage } from "../../shared/types.ts";
+import type { DecisionReplyBridgeInput, DecisionReplyBridgeResult } from "./decision-inbox-routes.ts";
 
 type DirectiveAndInboxRouteCtx = Pick<RuntimeContext, "app" | "db" | "broadcast">;
 
@@ -21,7 +27,9 @@ type DirectiveAndInboxRouteDeps = {
   shouldExecuteDirectiveDelegation: RuntimeContext["shouldExecuteDirectiveDelegation"];
   findTeamLeader: RuntimeContext["findTeamLeader"];
   handleTaskDelegation: RuntimeContext["handleTaskDelegation"];
+  scheduleAgentReply: RuntimeContext["scheduleAgentReply"];
   detectMentions: RuntimeContext["detectMentions"];
+  tryHandleInboxDecisionReply?: (input: DecisionReplyBridgeInput) => Promise<DecisionReplyBridgeResult>;
 };
 
 const buildAgentUpgradeRequiredPayload = () => {
@@ -86,7 +94,9 @@ export function registerDirectiveAndInboxRoutes(
     shouldExecuteDirectiveDelegation,
     findTeamLeader,
     handleTaskDelegation,
+    scheduleAgentReply,
     detectMentions,
+    tryHandleInboxDecisionReply,
   } = deps;
 
   app.post("/api/directives", async (req, res) => {
@@ -96,6 +106,8 @@ export function registerDirectiveAndInboxRoutes(
     const explicitProjectId = normalizeTextField(body.project_id);
     const explicitProjectPath = normalizeTextField(body.project_path);
     const explicitProjectContext = normalizeTextField(body.project_context);
+    const explicitSource = normalizeTextField(body.source);
+    const explicitChat = normalizeTextField(body.chat);
     if (!content || typeof content !== "string") {
       if (
         !recordMessageIngressAuditOr503(res, {
@@ -218,12 +230,24 @@ export function registerDirectiveAndInboxRoutes(
     const directivePolicy = analyzeDirectivePolicy(content);
     const explicitSkip = body.skipPlannedMeeting === true;
     const shouldDelegate = shouldExecuteDirectiveDelegation(directivePolicy, explicitSkip);
+    const directiveSessionRoute = resolveSessionTargetRouteFromDb({
+      db,
+      source: explicitSource,
+      chat: explicitChat,
+    });
+    const directiveFallbackRoute = resolveSourceChatRoute({
+      source: explicitSource,
+      chat: explicitChat,
+    });
+    const directiveReplyRoute = directiveSessionRoute ?? directiveFallbackRoute;
     const delegationOptions: DelegationOptions = {
       skipPlannedMeeting: explicitSkip || directivePolicy.skipPlannedMeeting,
       skipPlanSubtasks: explicitSkip || directivePolicy.skipPlanSubtasks,
       projectId: explicitProjectId,
       projectPath: explicitProjectPath,
       projectContext: explicitProjectContext,
+      messengerChannel: directiveReplyRoute?.channel,
+      messengerTargetId: directiveReplyRoute?.targetId,
     };
 
     if (shouldDelegate) {
@@ -327,6 +351,18 @@ export function registerDirectiveAndInboxRoutes(
     const inboxProjectId = normalizeTextField(body.project_id);
     const inboxProjectPath = normalizeTextField(body.project_path);
     const inboxProjectContext = normalizeTextField(body.project_context);
+    const inboxSource = normalizeTextField(body.source);
+    const inboxChat = normalizeTextField(body.chat);
+    const directiveSessionRoute = resolveSessionTargetRouteFromDb({
+      db,
+      source: inboxSource,
+      chat: inboxChat,
+    });
+    const directiveFallbackRoute = resolveSourceChatRoute({
+      source: inboxSource,
+      chat: inboxChat,
+    });
+    const directiveReplyRoute = directiveSessionRoute ?? directiveFallbackRoute;
     if (!content) {
       if (
         !recordMessageIngressAuditOr503(res, {
@@ -359,15 +395,52 @@ export function registerDirectiveAndInboxRoutes(
       return res.status(428).json(buildAgentUpgradeRequiredPayload());
     }
 
-    const messageType = isDirective ? "directive" : "announcement";
+    const sessionRoute = !isDirective
+      ? resolveSessionAgentRouteFromDb({
+          db,
+          source: inboxSource,
+          chat: inboxChat,
+        })
+      : null;
+    const routedAgent = sessionRoute
+      ? (db.prepare("SELECT id FROM agents WHERE id = ? LIMIT 1").get(sessionRoute.agentId) as
+          | { id: string }
+          | undefined)
+      : null;
+    const shouldRouteToSessionAgent = Boolean(sessionRoute && routedAgent);
+    if (sessionRoute && !routedAgent) {
+      console.warn(
+        `[Claw-Empire] inbox session route ignored: mapped agent not found (agent_id=${sessionRoute.agentId}, channel=${sessionRoute.channel}, target=${sessionRoute.targetId})`,
+      );
+    }
+    if (!isDirective && !shouldRouteToSessionAgent) {
+      if (
+        !recordMessageIngressAuditOr503(res, {
+          endpoint: "/api/inbox",
+          req,
+          body,
+          idempotencyKey,
+          outcome: "validation_error",
+          statusCode: 422,
+          detail: "session_agent_not_configured",
+        })
+      )
+        return;
+      return res.status(422).json({
+        error: "session_agent_not_configured",
+        message: "non-directive inbox messages require a mapped agent on messenger session",
+      });
+    }
+
+    const messageType = isDirective ? "directive" : "chat";
     let storedMessage: StoredMessage;
     let created: boolean;
     try {
       ({ message: storedMessage, created } = await insertMessageWithIdempotency({
         senderType: "ceo",
         senderId: null,
-        receiverType: "all",
-        receiverId: null,
+        receiverType: shouldRouteToSessionAgent ? "agent" : "all",
+        receiverId: shouldRouteToSessionAgent && sessionRoute ? sessionRoute.agentId : null,
         content,
         messageType,
         idempotencyKey,
@@ -423,7 +496,13 @@ export function registerDirectiveAndInboxRoutes(
         })
       )
         return;
-      return res.json({ ok: true, id: msg.id, directive: isDirective, duplicate: true });
+      return res.json({
+        ok: true,
+        id: msg.id,
+        directive: isDirective,
+        duplicate: true,
+        routed: shouldRouteToSessionAgent ? "agent" : "announcement",
+      });
     }
 
     if (
@@ -436,12 +515,66 @@ export function registerDirectiveAndInboxRoutes(
           idempotencyKey,
           outcome: "accepted",
           statusCode: 200,
-          detail: isDirective ? "created:directive" : "created:announcement",
+          detail: isDirective
+            ? "created:directive"
+            : "created:agent_session",
         },
         msg.id,
       ))
     )
       return;
+
+    if (!isDirective && shouldRouteToSessionAgent && sessionRoute && tryHandleInboxDecisionReply) {
+      const decisionResult = await tryHandleInboxDecisionReply({
+        text: content,
+        body,
+        source: inboxSource,
+        chat: inboxChat,
+        channel: sessionRoute.channel,
+        targetId: sessionRoute.targetId,
+      });
+      if (decisionResult.handled) {
+        broadcast("new_message", msg);
+        return res.status(decisionResult.status).json({
+          ok: decisionResult.status < 400,
+          id: msg.id,
+          directive: false,
+          routed: "decision_reply",
+          decision: decisionResult.payload,
+          session: {
+            channel: sessionRoute.channel,
+            session_id: sessionRoute.sessionId,
+            target_id: sessionRoute.targetId,
+          },
+        });
+      }
+    }
+
+    if (!isDirective && shouldRouteToSessionAgent && sessionRoute) {
+      broadcast("new_message", msg);
+      const directReplyOptions: DelegationOptions = {
+        projectId: inboxProjectId,
+        projectPath: inboxProjectPath,
+        projectContext: inboxProjectContext,
+        messengerChannel: sessionRoute.channel,
+        messengerTargetId: sessionRoute.targetId,
+      };
+      scheduleAgentReply(sessionRoute.agentId, content, "chat", directReplyOptions);
+      return res.json({
+        ok: true,
+        id: msg.id,
+        directive: false,
+        routed: "agent",
+        agent_id: sessionRoute.agentId,
+        session: {
+          channel: sessionRoute.channel,
+          session_id: sessionRoute.sessionId,
+          target_id: sessionRoute.targetId,
+        },
+      });
+    }
+
+    // $ prefix only: announcement/directive flow
     // Broadcast
     broadcast("announcement", msg);
 
@@ -457,6 +590,8 @@ export function registerDirectiveAndInboxRoutes(
       projectId: inboxProjectId,
       projectPath: inboxProjectPath,
       projectContext: inboxProjectContext,
+      messengerChannel: directiveReplyRoute?.channel,
+      messengerTargetId: directiveReplyRoute?.targetId,
     };
 
     if (shouldDelegateDirective) {
@@ -500,6 +635,6 @@ export function registerDirectiveAndInboxRoutes(
       }, mentionDelay);
     }
 
-    res.json({ ok: true, id: msg.id, directive: isDirective });
+    res.json({ ok: true, id: msg.id, directive: isDirective, routed: "announcement" });
   });
 }

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.2-blue" alt="Releases" />
+  <img src="https://img.shields.io/badge/version-1.2.3-blue" alt="Releases" />
   <a href="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml"><img src="https://github.com/GreenSheep01201/claw-empire/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/license-Apache%202.0-orange" alt="License" />
@@ -21,7 +21,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#ai-installation-guide">AI Install Guide</a> &middot;
-  <a href="docs/releases/v1.2.2.md">Release Notes</a> &middot;
+  <a href="docs/releases/v1.2.3.md">Release Notes</a> &middot;
   <a href="#openclaw-integration">OpenClaw</a> &middot;
   <a href="#dollar-command-logic">$ Command</a> &middot;
   <a href="#features">Features</a> &middot;
@@ -67,17 +67,18 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 
 ---
 
-## Latest Release (v1.2.2)
+## Latest Release (v1.2.3)
 
-- **Interrupt-inject feature rollout** - Added paused-session prompt injection with `/api/tasks/:id/inject`, session proof tokens, prompt queue hashing, and terminal-side inject/resume controls.
-- **Task-control security hardening** - Added CSRF enforcement for cookie-authenticated mutation routes and interrupt-token validation for pause/resume/inject paths.
-- **Per-agent CLI model control (Office)** - Agent Detail now supports provider-level main model override (`cli_model`) for CLI providers and Codex-only reasoning override (`cli_reasoning_level`).
-- **Runtime override propagation** - Agent overrides now flow consistently across run/orchestration/spawn/one-shot/delegation execution paths, while sub-agent model preference remains globally managed in Settings.
-- **Planning-lead fast path (no tools)** - Team-lead meetings, decision-inbox planning consolidations, and final report consolidation now run with `noTools: true` to avoid tool calls and speed up verdict generation.
-- **Terminal UI polish** - Improved interrupt action readability in light mode and tightened operator messaging for pending token/session states.
-- **Coverage and docs updates** - Added interrupt control/injection tests, a QA smoke script, and API docs updates for CSRF bootstrap and interrupt injection requirements.
+- **Unified messenger channels + native adapters** - Standardized built-in channels (`telegram`, `whatsapp`, `discord`, `googlechat`, `slack`, `signal`, `imessage`) with runtime routing and channel-specific send handling.
+- **Settings UX redesign for chat sessions** - Added single "Add Chat" modal flow (create/edit/delete), immediate persist on confirm, and per-session agent mapping with avatar/name display.
+- **Channel-isolated report/meeting relay** - Task-scoped route pinning now relays task broadcasts (`report`, `chat`, `status_update`) only to the originating messenger channel/target.
+- **Decision Inbox in-messenger reply flow** - Decision requests are delivered to the mapped channel, users can respond with numeric choices directly (`1`, `1,3`), and replies are applied with localized ACKs.
+- **Decision delivery dedupe + formatting cleanup** - Added persistent dedupe guard to prevent repeated decision notices and simplified message format for cleaner mobile/messenger readability.
+- **Messenger completion report readability patch** - Long completion reports are auto-summarized for messenger delivery, with key results/progress plus agent identity intro line.
+- **Project binding + safety hardening** - Direct chat enforces existing/new project selection before escalation, improves multilingual intent fallback, and restricts path creation to `PROJECT_PATH_ALLOWED_ROOTS`.
+- **Direct chat reliability improvements** - Added duplicate sentence normalization and strengthened messenger session/route resolution logic.
 
-- Full notes: [`docs/releases/v1.2.2.md`](docs/releases/v1.2.2.md)
+- Full notes: [`docs/releases/v1.2.3.md`](docs/releases/v1.2.3.md)
 - API docs: [`docs/api.md`](docs/api.md), [`docs/openapi.json`](docs/openapi.json)
 - Security policy: [`SECURITY.md`](SECURITY.md)
 
@@ -130,7 +131,7 @@ Claw-Empire transforms your AI coding assistants — connected via **CLI**, **OA
 <tr>
 <td width="50%">
 
-**Messenger Integration** — Send `$` CEO directives from Telegram, Discord, Slack and receive real-time task updates via OpenClaw
+**Messenger Integration** — Configure Telegram, WhatsApp, Discord, Google Chat, Slack, Signal, iMessage sessions and send `$` CEO directives
 
 <img src="Sample_Img/telegram.png" alt="Telegram Integration" width="100%" />
 </td>
@@ -191,7 +192,7 @@ Usage path: **Chat window > Report Request button**, then enter your request.
 | **Meeting System**             | Planned and ad-hoc meetings with AI-generated minutes and multi-round review                                                                                 |
 | **Git Worktree Isolation**     | Each agent works in isolated git branches, merged only on CEO approval                                                                                       |
 | **Multi-Language UI**          | English, Korean, Japanese, Chinese — auto-detected or manually set                                                                                           |
-| **Messenger Integration**      | Telegram, Discord, Slack and more — send `$` CEO directives and receive task updates via OpenClaw gateway                                                    |
+| **Messenger Integration**      | Telegram, Discord, Slack and more — send `$` CEO directives and receive updates through built-in direct channel sessions (OpenClaw optional)                                                   |
 | **PowerPoint Export**          | Generate presentation slides from meeting minutes and reports                                                                                                |
 | **Connectivity QA Scripts**    | Built-in `test:comm:*` scripts for CLI/OAuth/API communication validation with retry and evidence logs                                                       |
 | **In-App Update Notice**       | Checks GitHub latest release and shows a top banner with OS-specific `git pull` guidance when a newer version is available                                   |
@@ -293,15 +294,15 @@ curl -s http://127.0.0.1:8790/healthz
 
 Expected: `{"ok":true,...}`
 
-`OPENCLAW_CONFIG` should be an absolute path in `.env` (unquoted preferred in docs). In `v1.0.5`, quoted values and leading `~` are also normalized at runtime.
+Messenger channels are configured in Settings UI and persisted to SQLite (`settings.messengerChannels`). `.env` messenger token/channel variables are no longer used.
 
-### Step 4: Optional OpenClaw gateway + inbox verification
+### Step 4: Optional messenger + inbox verification
 
 ```bash
-curl -s http://127.0.0.1:8790/api/gateway/targets
+curl -s http://127.0.0.1:8790/api/messenger/sessions
 ```
 
-If `OPENCLAW_CONFIG` is valid, this returns available messenger sessions.
+This returns messenger sessions saved in Settings.
 
 ```bash
 curl -X POST http://127.0.0.1:8790/api/inbox \
@@ -452,7 +453,7 @@ pnpm setup -- --port 8790
 
 <a id="openclaw-integration"></a>
 
-### OpenClaw Integration Setup (Telegram/Discord/Slack)
+### OpenClaw Integration Setup (Telegram/WhatsApp/Discord/Google Chat/Slack/Signal/iMessage)
 
 `install.sh` / `install.ps1` (or `scripts/openclaw-setup.*`) will auto-detect and write `OPENCLAW_CONFIG` when possible.
 
